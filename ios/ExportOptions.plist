@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Phương thức phát hành -->
+  <key>method</key>
+  <string>app-store</string>
+
+  <!-- Team ID (chuẩn Apple Developer Team) -->
+  <key>teamID</key>
+  <string>CS2UV6F3ZY</string>
+
+  <!-- Phong cách ký -->
+  <key>signingStyle</key>
+  <string>manual</string>
+
+  <!-- Provisioning profile cho từng bundle ID -->
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+    <string>WonderSpaceGallery_AppStore_Profile</string>
+  </dict>
+
+  <!-- Bắt buộc disable bitcode để tránh lỗi build -->
+  <key>compileBitcode</key>
+  <false/>
+
+  <!-- Tự động upload symbols để Debug/Crashlytics hoạt động -->
+  <key>uploadSymbols</key>
+  <true/>
+
+  <!-- Bỏ upload bitcode (Apple không còn dùng) -->
+  <key>uploadBitcode</key>
+  <false/>
+
+  <!-- Giữ Swift symbols để Apple phân tích crash -->
+  <key>stripSwiftSymbols</key>
+  <true/>
+
+  <!-- Mục tiêu export -->
+  <key>destination</key>
+  <string>export</string>
+
+  <!-- Không phân mảnh (universal IPA) -->
+  <key>thinning</key>
+  <string>&lt;none&gt;</string>
+
+  <!-- Giữ nguyên signing identity -->
+  <key>signingCertificate</key>
+  <string>Apple Distribution</string>
+
+  <!-- Cho phép manage team provisioning -->
+  <key>manageAppVersionAndBuildNumber</key>
+  <true/>
+</dict>
+</plist>

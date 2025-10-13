@@ -1,0 +1,47 @@
+platform :ios, '15.0'
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first." unless File.exist?(generated_xcode_build_settings_path)
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    target.build_configurations.each do |config|
+      # ⚙️ Cho phép Pods ký tự động
+      config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
+      config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
+      config.build_settings['CODE_SIGN_IDENTITY'] = ''
+      config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
+
+      # ⚙️ Không nhúng Swift standard libs thừa (tránh lỗi upload)
+      config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
+
+      # ⚙️ Giảm warning liên quan iOS 17 / Swift
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+    end
+  end
+end
