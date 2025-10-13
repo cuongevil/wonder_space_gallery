@@ -17,6 +17,7 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
+        FLUTTER_BUILD_NUMBER: "5"
 
     scripts:
       - name: 🧹 Clean & Prepare
