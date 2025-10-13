@@ -161,18 +161,19 @@ workflows:
       - name: 📦 Export Signed IPA (App Store)
         script: |
           set -e
-          EXPORT_PATH="build/ios/ipa"
           ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
-          EXPORT_OPTIONS="build/ios/exportOptions.plist"
+          EXPORT_PATH="$CM_BUILD_DIR/build/ios/ipa"
+          EXPORT_OPTIONS="$CM_BUILD_DIR/build/ios/exportOptions.plist"
 
           echo "🧾 Creating exportOptions.plist..."
-          cat > $EXPORT_OPTIONS <<EOF
+          mkdir -p "$(dirname "$EXPORT_OPTIONS")"
+          cat > "$EXPORT_OPTIONS" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
             <string>$TEAM_ID</string>
             <key>signingStyle</key>
@@ -199,11 +200,13 @@ workflows:
 
           echo "✅ Export completed."
 
-          # 🔍 Tìm file Runner.ipa thực tế
-          IPA_PATH=$(find build -type f -name "Runner.ipa" | head -n 1 || true)
+          # 🔍 Tìm file IPA ở toàn hệ thống build (bao gồm Users/builder/clone)
+          IPA_PATH=$(find "$CM_BUILD_DIR" -type f -name "Runner.ipa" | head -n 1 || true)
 
           if [ -z "$IPA_PATH" ]; then
             echo "❌ Không tìm thấy Runner.ipa sau khi export!"
+            echo "📁 Debug: Liệt kê thư mục build/ios/ipa"
+            ls -R "$CM_BUILD_DIR/build/ios" || true
             exit 1
           fi
 
