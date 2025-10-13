@@ -17,7 +17,7 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
-        FLUTTER_BUILD_NUMBER: "5"
+        FLUTTER_BUILD_NUMBER: "6"
 
     scripts:
       - name: 🧹 Clean & Prepare
@@ -85,16 +85,17 @@ workflows:
                 config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
                 config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+                config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
               end
             end
 
-            # 🧩 Clean project-level build settings in Pods
+            # 🧩 Clean project-level config of Pods
             installer.pods_project.build_configurations.each do |config|
               config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
               config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
             end
 
-            # ✅ Manual signing for Runner target
+            # ✅ Manual signing only for Runner target
             installer.aggregate_targets.each do |aggregate_target|
               aggregate_target.user_project.native_targets.each do |target|
                 next unless target.name == 'Runner'
@@ -117,7 +118,7 @@ workflows:
           pod install
           cd ..
 
-      - name: 🚀 Build & Archive iOS App
+      - name: 🚀 Build & Archive iOS App (Signed)
         script: |
           set -e
           echo "--------------------------------------------"
@@ -131,22 +132,23 @@ workflows:
           mkdir -p build/ios/archive
           set -o pipefail
 
+          xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
+
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             DEVELOPMENT_TEAM=$TEAM_ID \
             PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID \
-            FLUTTER_BUILD_NUMBER=$FLUTTER_BUILD_NUMBER \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$CERT_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
             -allowProvisioningUpdates | tee build/archive.log
 
-          echo "✅ Archive completed and properly signed."
+          echo "✅ Archive completed with manual signing."
 
       - name: 🧹 Clean duplicate Info.plist in Frameworks
         script: |
@@ -164,27 +166,51 @@ workflows:
           fi
           echo "✅ All duplicate Info.plist cleaned."
 
-      - name: 🔍 Detect Bundle ID Collisions
-        script: |
-          echo "🔎 Checking all CFBundleIdentifiers..."
-          find build/ios/archive/Runner.xcarchive -name "Info.plist" -exec grep -H "CFBundleIdentifier" {} \; | sort | uniq -c | sort -nr
-
-      - name: 📦 Export IPA
+      - name: 📦 Export Signed IPA (App Store)
         script: |
           set -e
-          echo "🧩 Creating final IPA..."
-          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          mkdir -p build/ios/ipa/Payload
-          cp -R "$APP_PATH" build/ios/ipa/Payload/
-          cd build/ios/ipa
-          zip -r Runner.ipa Payload
-          cd ../../..
-          echo "✅ IPA ready at build/ios/ipa/Runner.ipa"
+          EXPORT_PATH="build/ios/ipa"
+          ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
+          EXPORT_OPTIONS="build/ios/exportOptions.plist"
 
-          echo "🧾 Verifying embedded.mobileprovision..."
-          unzip -l build/ios/ipa/Runner.ipa | grep mobileprovision || echo "⚠️ WARNING: missing embedded.mobileprovision (check signing)."
+          echo "🧾 Creating exportOptions.plist..."
+          cat > $EXPORT_OPTIONS <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>$CERT_NAME</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROVISIONING_PROFILE_SPECIFIER</string>
+            </dict>
+            <key>compileBitcode</key>
+            <false/>
+            <key>destination</key>
+            <string>export</string>
+          </dict>
+          </plist>
+          EOF
+
+          echo "📦 Exporting signed IPA..."
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS" \
+            -allowProvisioningUpdates | tee build/export.log
+
+          echo "✅ Export completed. IPA ready at: $EXPORT_PATH/Runner.ipa"
 
     artifacts:
       - build/ios/ipa/Runner.ipa
       - build/ios/archive/Runner.xcarchive
       - build/archive.log
+      - build/export.log
