@@ -44,4 +44,11 @@ post_install do |installer|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
   end
+
+  # 🧩 Ngăn Pod trùng CFBundleIdentifier (fix ITMS-90685)
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
+    end
+  end
 end

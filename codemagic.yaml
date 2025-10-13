@@ -30,10 +30,7 @@ workflows:
         script: |
           set -e
           cd ios
-          echo "📱 Set iOS deployment target to 15.0"
-          sed -i '' 's/platform :ios.*/platform :ios, "15.0"/' Podfile || true
-
-          echo "⚙️ Rewriting post_install block..."
+          echo "📱 Rewriting Podfile with clean bundle config..."
           cat > Podfile <<'RUBY'
           platform :ios, '15.0'
           ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -66,13 +63,22 @@ workflows:
           post_install do |installer|
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
+
               target.build_configurations.each do |config|
+                # 🧩 Fix signing & Swift libs
                 config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
                 config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
                 config.build_settings['CODE_SIGN_IDENTITY'] = ''
                 config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
                 config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
                 config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+              end
+            end
+
+            # 🧩 Critical fix: remove duplicate CFBundleIdentifier in Pods
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
               end
             end
           end
@@ -83,25 +89,6 @@ workflows:
           pod deintegrate
           pod install
           cd ..
-
-      - name: 🔧 Fix Signing for Pods
-        script: |
-          set -e
-          echo "⚙️ Cleaning Pod signing settings..."
-          ruby -e "
-            require 'xcodeproj';
-            p='ios/Pods/Pods.xcodeproj';
-            proj=Xcodeproj::Project.open(p);
-            proj.targets.each{|t|t.build_configurations.each{|c|
-              c.build_settings['CODE_SIGNING_ALLOWED']='NO';
-              c.build_settings['CODE_SIGNING_REQUIRED']='NO';
-              c.build_settings['CODE_SIGN_STYLE']='Automatic';
-              c.build_settings['PROVISIONING_PROFILE_SPECIFIER']='';
-              c.build_settings['PROVISIONING_PROFILE']='';
-              c.build_settings['DEVELOPMENT_TEAM']='';
-              c.build_settings['PRODUCT_BUNDLE_IDENTIFIER']='';
-            }}; proj.save"
-          echo "✅ Pods signing cleaned."
 
       - name: 🚀 Build & Archive iOS App
         script: |
@@ -144,7 +131,7 @@ workflows:
           echo "🧹 Removing disallowed Swift dylibs..."
           find build/ios/archive/Runner.xcarchive -name "libswift_*.dylib" -print -delete
           echo "✅ Cleaned Swift dylibs."
-          
+
           echo "🧩 Creating clean IPA from .xcarchive..."
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
           FRAMEWORKS_PATH="$APP_PATH/Frameworks"
