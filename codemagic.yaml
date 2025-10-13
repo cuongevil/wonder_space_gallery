@@ -30,7 +30,7 @@ workflows:
         script: |
           set -e
           cd ios
-          echo "📱 Rewriting Podfile with clean bundle config..."
+          echo "📱 Rewriting Podfile with correct settings..."
           cat > Podfile <<'RUBY'
           platform :ios, '15.0'
           ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -63,9 +63,8 @@ workflows:
           post_install do |installer|
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
-
               target.build_configurations.each do |config|
-                # 🧩 Fix signing & Swift libs
+                # ⚙️ Cho phép ký tự động và loại bỏ Swift libs thừa
                 config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
                 config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
                 config.build_settings['CODE_SIGN_IDENTITY'] = ''
@@ -75,7 +74,7 @@ workflows:
               end
             end
 
-            # 🧩 Critical fix: remove duplicate CFBundleIdentifier in Pods
+            # 🧩 Fix ITMS-90685: xóa PRODUCT_BUNDLE_IDENTIFIER trong Pods
             installer.pods_project.targets.each do |target|
               target.build_configurations.each do |config|
                 config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
@@ -90,7 +89,7 @@ workflows:
           pod install
           cd ..
 
-      - name: 🚀 Build & Archive iOS App
+      - name: 🚀 Build & Archive iOS App (Signed)
         script: |
           set -e
           echo "--------------------------------------------"
@@ -103,6 +102,7 @@ workflows:
           mkdir -p build/ios/archive
           set -o pipefail
 
+          # ✅ Cho phép ký app chính (Manual signing)
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -115,10 +115,9 @@ workflows:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$CERT_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             -allowProvisioningUpdates | tee build/archive.log
 
-          echo "✅ Archive completed."
+          echo "✅ Archive completed and properly signed."
 
       - name: 🔍 Detect Bundle ID Collisions
         script: |
@@ -132,21 +131,17 @@ workflows:
           find build/ios/archive/Runner.xcarchive -name "libswift_*.dylib" -print -delete
           echo "✅ Cleaned Swift dylibs."
 
-          echo "🧩 Creating clean IPA from .xcarchive..."
+          echo "🧩 Creating IPA..."
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          FRAMEWORKS_PATH="$APP_PATH/Frameworks"
-
-          echo "🧹 Removing invalid dylibs..."
-          if [ -d "$FRAMEWORKS_PATH" ]; then
-            find "$FRAMEWORKS_PATH" -name "libswift_*.dylib" -delete
-          fi
-
           mkdir -p build/ios/ipa/Payload
           cp -R "$APP_PATH" build/ios/ipa/Payload/
           cd build/ios/ipa
           zip -r Runner.ipa Payload
           cd ../../..
           echo "✅ IPA ready at build/ios/ipa/Runner.ipa"
+
+          echo "🧾 Checking for embedded.mobileprovision..."
+          unzip -l build/ios/ipa/Runner.ipa | grep mobileprovision || echo "⚠️ WARNING: missing embedded.mobileprovision (check signing)."
 
     artifacts:
       - build/ios/ipa/Runner.ipa
