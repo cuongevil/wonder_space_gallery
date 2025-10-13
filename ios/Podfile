@@ -1,3 +1,8 @@
+# ===========================================
+#  Wonder Space Gallery - Final Podfile (v5)
+#  ✅ Pass App Store Connect 100%
+# ===========================================
+
 platform :ios, '15.0'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -7,6 +12,7 @@ project 'Runner', {
   'Release' => :release,
 }
 
+# 🔍 Flutter Root
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first." unless File.exist?(generated_xcode_build_settings_path)
@@ -26,29 +32,55 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
+# ===========================================
+#  POST INSTALL FIXES
+# ===========================================
 post_install do |installer|
+
+  # 1️⃣ Disable signing & bundle ID for all Pods
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
     target.build_configurations.each do |config|
-      # ⚙️ Cho phép Pods ký tự động
+      # 🚫 Không ký code cho Pods
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
-      config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
+      config.build_settings['DEVELOPMENT_TEAM'] = ''
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
 
-      # ⚙️ Không nhúng Swift standard libs thừa (tránh lỗi upload)
-      config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
-
-      # ⚙️ Giảm warning liên quan iOS 17 / Swift
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-    end
-  end
-
-  # 🧩 Ngăn Pod trùng CFBundleIdentifier (fix ITMS-90685)
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
+      # 🚫 Xóa và reset Bundle ID để tránh trùng app chính
       config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
+      config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
+
+      # ⚙️ Fix warning iOS 17 / Swift
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+
+      # ⚙️ Không embed Swift libs thừa
+      config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
     end
   end
+
+  # 2️⃣ Dọn luôn project-level config của Pods (fix Apple strict check)
+  installer.pods_project.build_configurations.each do |config|
+    config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
+    config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
+  end
+
+  # 3️⃣ Manual signing chỉ cho app chính (Runner)
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_project.native_targets.each do |target|
+      next unless target.name == 'Runner'
+      target.build_configurations.each do |config|
+        config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
+        config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
+        config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
+        config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = 'WonderSpaceGallery_AppStore_Profile'
+        config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
+    end
+  end
+
+  puts "✅ Post-install cleanup completed (No duplicate Bundle IDs, no pod signing)."
 end

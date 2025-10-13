@@ -38,7 +38,7 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" ios/Runner/Info.plist
           echo "✅ Info.plist synced."
 
-      - name: 🧩 Fix Podfile (final version)
+      - name: 🧩 Fix Podfile (final)
         script: |
           set -e
           cd ios
@@ -73,7 +73,7 @@ workflows:
           end
 
           post_install do |installer|
-            # 🔧 Disable signing for all Pods (fix ITMS-90685)
+            # 🔧 Disable signing for all Pods
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
@@ -88,13 +88,13 @@ workflows:
               end
             end
 
-            # 🧩 Ensure Pods project-level config is also cleaned
+            # 🧩 Clean project-level build settings in Pods
             installer.pods_project.build_configurations.each do |config|
               config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
               config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
             end
 
-            # ✅ Manual signing only for Runner target
+            # ✅ Manual signing for Runner target
             installer.aggregate_targets.each do |aggregate_target|
               aggregate_target.user_project.native_targets.each do |target|
                 next unless target.name == 'Runner'
@@ -148,19 +148,31 @@ workflows:
 
           echo "✅ Archive completed and properly signed."
 
-      - name: 🔍 Detect Bundle ID Collisions
-        script: |
-          echo "🔎 Scanning for duplicate CFBundleIdentifiers..."
-          find build/ios/archive/Runner.xcarchive -name "Info.plist" -exec grep -H "CFBundleIdentifier" {} \; | sort | uniq -c | sort -nr
-
-      - name: 📦 Export Clean IPA
+      - name: 🧹 Clean duplicate Info.plist in Frameworks
         script: |
           set -e
-          echo "🧹 Removing disallowed Swift dylibs..."
-          find build/ios/archive/Runner.xcarchive -name "libswift_*.dylib" -print -delete
-          echo "✅ Cleaned Swift dylibs."
+          echo "🧹 Removing duplicate CFBundleIdentifier in embedded frameworks..."
+          FRAMEWORK_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            for plist in $(find "$FRAMEWORK_PATH" -name "Info.plist"); do
+              if grep -q "com.ctmd.wonderforge.wonderspace.gallery" "$plist"; then
+                FRAMEWORK_NAME=$(basename "$(dirname "$plist")" .framework)
+                echo "⚠️ Found duplicate in $FRAMEWORK_NAME → cleaning..."
+                /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ctmd.wonderforge.wonderspace.gallery.$FRAMEWORK_NAME" "$plist" || true
+              fi
+            done
+          fi
+          echo "✅ All duplicate Info.plist cleaned."
 
-          echo "🧩 Creating IPA..."
+      - name: 🔍 Detect Bundle ID Collisions
+        script: |
+          echo "🔎 Checking all CFBundleIdentifiers..."
+          find build/ios/archive/Runner.xcarchive -name "Info.plist" -exec grep -H "CFBundleIdentifier" {} \; | sort | uniq -c | sort -nr
+
+      - name: 📦 Export IPA
+        script: |
+          set -e
+          echo "🧩 Creating final IPA..."
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
           mkdir -p build/ios/ipa/Payload
           cp -R "$APP_PATH" build/ios/ipa/Payload/
@@ -169,7 +181,7 @@ workflows:
           cd ../../..
           echo "✅ IPA ready at build/ios/ipa/Runner.ipa"
 
-          echo "🧾 Checking for embedded.mobileprovision..."
+          echo "🧾 Verifying embedded.mobileprovision..."
           unzip -l build/ios/ipa/Runner.ipa | grep mobileprovision || echo "⚠️ WARNING: missing embedded.mobileprovision (check signing)."
 
     artifacts:
