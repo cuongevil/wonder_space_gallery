@@ -197,10 +197,19 @@ workflows:
             -exportOptionsPlist "$EXPORT_OPTIONS" \
             -allowProvisioningUpdates | tee build/export.log
 
-          echo "✅ Export completed. IPA ready at: $EXPORT_PATH/Runner.ipa"
+          echo "✅ Export completed."
 
-          # ✅ Copy IPA ra root để hiện trong Codemagic Artifacts
-          cp "$EXPORT_PATH/Runner.ipa" "$CM_BUILD_DIR/Runner.ipa"
+          # 🔍 Tìm file Runner.ipa thực tế
+          IPA_PATH=$(find build -type f -name "Runner.ipa" | head -n 1 || true)
+
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ Không tìm thấy Runner.ipa sau khi export!"
+            exit 1
+          fi
+
+          echo "✅ Found IPA at: $IPA_PATH"
+          cp "$IPA_PATH" "$CM_BUILD_DIR/Runner.ipa"
+          echo "📦 Copied Runner.ipa to artifact root."
 
     artifacts:
       - Runner.ipa
