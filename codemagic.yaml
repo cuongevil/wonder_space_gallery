@@ -178,8 +178,7 @@ workflows:
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" \
             -allowProvisioningUpdates \
-            -allowProvisioningDeviceRegistration \
-            -exportSigningIdentity "$CERT_NAME"
+            -allowProvisioningDeviceRegistration
 
           echo "✅ Export completed."
 
