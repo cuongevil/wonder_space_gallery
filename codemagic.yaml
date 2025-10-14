@@ -119,7 +119,7 @@ workflows:
           # ✅ Không override signing từ CLI — dùng config trong Podfile
           xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
 
-          # ✅ Disable signing for frameworks explicitly to avoid mismatched IDs
+          # ✅ Disable signing for frameworks explicitly
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -183,6 +183,24 @@ workflows:
 
           cp "$IPA_PATH" build/Runner.ipa
           echo "✅ Copied IPA to build/Runner.ipa"
+
+      - name: 🔐 Re-sign frameworks with correct identity
+        script: |
+          set -e
+          echo "🔐 Cleaning and re-signing frameworks..."
+          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+
+          # Remove invalid signatures first
+          find "$APP_PATH/Frameworks" -type d -name "*.framework" | while read framework; do
+            echo "❌ Removing signature from $(basename "$framework")"
+            codesign --remove-signature "$framework" || true
+          done
+
+          # Re-sign clean with ad-hoc identity (-)
+          find "$APP_PATH/Frameworks" -type d -name "*.framework" | while read framework; do
+            echo "✅ Re-signing $(basename "$framework")"
+            codesign --force --sign - "$framework" --preserve-metadata=identifier,entitlements --timestamp=none
+          done
 
       - name: 🧰 Fix invalid CFBundleIdentifier in frameworks
         script: |
