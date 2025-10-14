@@ -17,7 +17,7 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
-        FLUTTER_BUILD_NUMBER: "7"
+        FLUTTER_BUILD_NUMBER: "8"
 
     scripts:
       - name: 🧹 Clean & Prepare
@@ -142,21 +142,23 @@ workflows:
 
           echo "✅ Archive completed with manual signing."
 
-      - name: 🧹 Clean duplicate Info.plist in Frameworks
+      - name: 🧩 Fix invalid CFBundleIdentifier before signing
         script: |
           set -e
-          echo "🧹 Removing duplicate CFBundleIdentifier in embedded frameworks..."
-          FRAMEWORK_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
-          if [ -d "$FRAMEWORK_PATH" ]; then
-            for plist in $(find "$FRAMEWORK_PATH" -name "Info.plist"); do
-              if grep -q "com.ctmd.wonderforge.wonderspace.gallery" "$plist"; then
-                FRAMEWORK_NAME=$(basename "$(dirname "$plist")" .framework)
-                echo "⚠️ Found duplicate in $FRAMEWORK_NAME → cleaning..."
-                /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.ctmd.wonderforge.wonderspace.gallery.$FRAMEWORK_NAME" "$plist" || true
+          APP_FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
+
+          echo "🧹 Scanning for invalid CFBundleIdentifiers..."
+          if [ -d "$APP_FRAMEWORKS_PATH" ]; then
+            for plist in $(find "$APP_FRAMEWORKS_PATH" -name "Info.plist"); do
+              BID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || echo "")
+              if [[ "$BID" == *"_"* ]]; then
+                FRAMEWORK_NAME=$(basename "$(dirname "$plist")")
+                echo "⚠️ Invalid CFBundleIdentifier detected in $FRAMEWORK_NAME → removing..."
+                /usr/libexec/PlistBuddy -c "Delete :CFBundleIdentifier" "$plist" || true
               fi
             done
           fi
-          echo "✅ All duplicate Info.plist cleaned."
+          echo "✅ Cleaned invalid CFBundleIdentifiers successfully."
 
       - name: 📦 Export Signed IPA (App Store)
         script: |
@@ -200,9 +202,7 @@ workflows:
 
           echo "✅ Export completed."
 
-          # 🔍 Tìm file IPA (vì Xcode có thể đổi tên như wonderspace.gallery.ipa)
           IPA_PATH=$(find "$CM_BUILD_DIR" -type f -name "*.ipa" | head -n 1 || true)
-
           if [ -z "$IPA_PATH" ]; then
             echo "❌ Không tìm thấy file IPA sau khi export!"
             echo "📁 Debug: Liệt kê thư mục build/ios/ipa"
