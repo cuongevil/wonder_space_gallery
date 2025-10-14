@@ -22,7 +22,6 @@ workflows:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter project..."
           flutter clean
           flutter pub get
           cd ios && pod install --repo-update && cd ..
@@ -52,7 +51,6 @@ workflows:
           </dict>
           </plist>
           EOF
-          echo "✅ exportOptions.plist created."
 
       - name: 🚀 Build iOS Release (Xcode)
         script: |
@@ -67,12 +65,29 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             clean archive
 
+      - name: 🔧 Sanitize CFBundleIdentifier in Frameworks
+        script: |
+          set -e
+          echo "🔧 Fixing invalid CFBundleIdentifiers (replace '_' with '-')..."
+          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          find "$APP_PATH/Frameworks" -name Info.plist | while read plist; do
+            CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
+            if [[ "$CURRENT_ID" == *"_"* ]]; then
+              FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
+              echo "⚙️ $CURRENT_ID → $FIXED_ID"
+              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
+            fi
+          done
+          echo "✅ CFBundleIdentifier sanitized."
+
+      - name: 📦 Export fixed IPA
+        script: |
+          set -e
           echo "📦 Exporting IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist build/ios/exportOptions.plist \
             -exportPath build/ios/ipa
-
           echo "✅ IPA successfully generated in build/ios/ipa"
 
       - name: 📋 Show IPA
