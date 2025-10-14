@@ -17,13 +17,12 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
-        FLUTTER_BUILD_NUMBER: "10"
+        FLUTTER_BUILD_NUMBER: "11"
 
     scripts:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter build..."
           flutter clean
           flutter pub get
 
@@ -38,11 +37,11 @@ workflows:
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" ios/Runner/Info.plist
           echo "✅ Info.plist synced."
 
-      - name: 🧩 Fix Podfile (final)
+      - name: 🧩 Fix Podfile
         script: |
           set -e
           cd ios
-          echo "📱 Rewriting Podfile with final signing logic..."
+          echo "📱 Rewriting Podfile..."
           cat > Podfile <<'RUBY'
           platform :ios, '15.0'
           ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -73,7 +72,7 @@ workflows:
           end
 
           post_install do |installer|
-            # 🔧 Disable signing for all Pods
+            # Disable signing for Pods
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
@@ -83,12 +82,10 @@ workflows:
                 config.build_settings['CODE_SIGN_IDENTITY'] = ''
                 config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
                 config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-                config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
               end
             end
 
-            # ✅ Manual signing only for Runner target
+            # Manual signing for Runner only
             installer.aggregate_targets.each do |aggregate_target|
               aggregate_target.user_project.native_targets.each do |target|
                 next unless target.name == 'Runner'
@@ -97,35 +94,22 @@ workflows:
                   config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
                   config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
                   config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = 'WonderSpaceGallery_AppStore_Profile'
-                  config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
                 end
               end
             end
           end
           RUBY
 
-          echo "📦 Installing pods..."
           pod repo update
           pod deintegrate
           pod install
           cd ..
 
-      - name: 🚀 Build & Archive iOS App (Signed)
+      - name: 🚀 Build & Archive
         script: |
           set -e
-          echo "--------------------------------------------"
-          echo "Team ID: $TEAM_ID"
-          echo "Bundle ID: $BUNDLE_ID"
-          echo "Cert Name: $CERT_NAME"
-          echo "Provisioning Profile: $PROVISIONING_PROFILE_SPECIFIER"
-          echo "Build Number: $FLUTTER_BUILD_NUMBER"
-          echo "--------------------------------------------"
-
           mkdir -p build/ios/archive
-          set -o pipefail
-
           xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
-
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -138,62 +122,31 @@ workflows:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$CERT_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
-            -allowProvisioningUpdates | tee build/archive.log
+            -allowProvisioningUpdates
 
-          echo "✅ Archive completed with manual signing."
-
-      - name: 🧩 Fix invalid CFBundleIdentifier before signing
+      - name: 🔧 Disable code signing for frameworks
         script: |
           set -e
-          APP_FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
-
-          echo "🧹 Scanning for invalid CFBundleIdentifiers..."
-          if [ -d "$APP_FRAMEWORKS_PATH" ]; then
-            for plist in $(find "$APP_FRAMEWORKS_PATH" -name "Info.plist"); do
-              BID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || echo "")
-              if [[ "$BID" == *"_"* ]]; then
-                FRAMEWORK_NAME=$(basename "$(dirname "$plist")")
-                echo "⚠️ Invalid CFBundleIdentifier detected in $FRAMEWORK_NAME → removing..."
-                /usr/libexec/PlistBuddy -c "Delete :CFBundleIdentifier" "$plist" || true
-              fi
-            done
-          fi
-          echo "✅ Cleaned invalid CFBundleIdentifiers successfully."
-
-      - name: 🔏 Clean & Resign frameworks after cleaning CFBundleIdentifier
-        script: |
-          set -e
-          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          FRAMEWORKS_PATH="$APP_PATH/Frameworks"
-
-          echo "🧹 Removing old code signatures..."
+          FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
+          echo "🔧 Removing signatures from all 3rd-party frameworks..."
           if [ -d "$FRAMEWORKS_PATH" ]; then
             find "$FRAMEWORKS_PATH" -type d -name "_CodeSignature" -exec rm -rf {} +
-          fi
-          echo "✅ Old signatures removed."
-
-          echo "🔏 Resigning all embedded frameworks..."
-          if [ -d "$FRAMEWORKS_PATH" ]; then
-            for framework in "$FRAMEWORKS_PATH"/*.framework; do
-              if [ -d "$framework" ]; then
-                FRAMEWORK_NAME=$(basename "$framework")
-                echo "→ Resigning $FRAMEWORK_NAME"
-                /usr/bin/codesign --force --sign "$CERT_NAME" --timestamp=none --preserve-metadata=identifier,entitlements "$framework"
-              fi
+            for fw in "$FRAMEWORKS_PATH"/*.framework; do
+              echo "→ $(basename "$fw")"
+              /usr/bin/codesign --remove-signature "$fw" || true
             done
           fi
-          echo "✅ All frameworks re-signed successfully."
+          echo "✅ Frameworks unsigned successfully."
 
-      - name: 📦 Export Signed IPA (App Store)
+      - name: 📦 Export Signed IPA
         script: |
           set -e
+          EXPORT_PATH="build/ios/ipa"
           ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
-          EXPORT_PATH="$CM_BUILD_DIR/build/ios/ipa"
-          EXPORT_OPTIONS="$CM_BUILD_DIR/build/ios/exportOptions.plist"
+          EXPORT_OPTIONS="build/ios/exportOptions.plist"
 
           echo "🧾 Creating exportOptions.plist..."
-          mkdir -p "$(dirname "$EXPORT_OPTIONS")"
-          cat > "$EXPORT_OPTIONS" <<EOF
+          cat > $EXPORT_OPTIONS <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -213,33 +166,33 @@ workflows:
             </dict>
             <key>destination</key>
             <string>export</string>
+            <key>compileBitcode</key>
+            <false/>
           </dict>
           </plist>
           EOF
 
-          echo "📦 Exporting signed IPA..."
+          echo "📦 Exporting IPA..."
           xcodebuild -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -allowProvisioningUpdates | tee build/export.log
+            -allowProvisioningUpdates \
+            -allowProvisioningDeviceRegistration
 
           echo "✅ Export completed."
 
-          IPA_PATH=$(find "$CM_BUILD_DIR" -type f -name "*.ipa" | head -n 1 || true)
+          IPA_PATH=$(find "$EXPORT_PATH" -type f -name "*.ipa" | head -n 1 || true)
           if [ -z "$IPA_PATH" ]; then
-            echo "❌ Không tìm thấy file IPA sau khi export!"
-            echo "📁 Debug: Liệt kê thư mục build/ios/ipa"
-            ls -R "$CM_BUILD_DIR/build/ios" || true
+            echo "❌ IPA not found! Debug list:"
+            ls -R "$EXPORT_PATH"
             exit 1
           fi
 
-          echo "✅ Found IPA at: $IPA_PATH"
-          cp "$IPA_PATH" "$CM_BUILD_DIR/Runner.ipa"
-          echo "📦 Copied IPA as Runner.ipa to artifact root."
+          cp "$IPA_PATH" build/Runner.ipa
+          echo "✅ Copied IPA to build/Runner.ipa"
 
     artifacts:
-      - Runner.ipa
+      - build/Runner.ipa
       - build/ios/archive/Runner.xcarchive
-      - build/archive.log
-      - build/export.log
+      - build/ios/exportOptions.plist
