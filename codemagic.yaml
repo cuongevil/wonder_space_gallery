@@ -28,9 +28,11 @@ workflows:
       - name: 🚀 Build iOS release
         script: |
           set -e
-          flutter build ipa --release \
-            --export-method app-store \
-            --bundle-id $BUNDLE_ID
+          echo "🚀 Building iOS release for App Store..."
+          flutter build ipa --release --export-method app-store
+          echo "✅ Flutter build completed."
+          echo "📦 IPA files:"
+          find build/ios/ipa -type f -name "*.ipa"
 
       - name: 🔍 Unzip and sanitize CFBundleIdentifiers
         script: |
@@ -69,7 +71,9 @@ workflows:
             fi
           done
 
-          codesign -f -s "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)" --entitlements ios/Runner/Runner.entitlements "$APP_PATH"
+          echo "🔑 Re-sign main Runner.app"
+          codesign -f -s "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)" \
+            --entitlements ios/Runner/Runner.entitlements "$APP_PATH" --timestamp=none
 
       - name: 📦 Repack fixed IPA
         script: |
