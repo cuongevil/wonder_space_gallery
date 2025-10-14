@@ -108,23 +108,24 @@ workflows:
           pod install
           cd ..
 
-      - name: 🚀 Build & Archive
+      - name: 🚀 Archive (No Pod Signing)
         script: |
           set -e
           mkdir -p build/ios/archive
-          xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
-          xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
+          echo "🚀 Building archive without signing frameworks..."
+          xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            DEVELOPMENT_TEAM=$TEAM_ID \
-            PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             CODE_SIGN_IDENTITY="$CERT_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
+            archive -archivePath "build/ios/archive/Runner.xcarchive" \
             -allowProvisioningUpdates
 
       - name: 🔧 Remove code signatures from frameworks before export
