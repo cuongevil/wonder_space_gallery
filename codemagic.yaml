@@ -72,18 +72,16 @@ workflows:
           end
 
           post_install do |installer|
-            # Disable signing for Pods
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
+                # Disable code signing for all pods
                 config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+                config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
                 config.build_settings['DEVELOPMENT_TEAM'] = ''
                 config.build_settings['CODE_SIGN_IDENTITY'] = ''
                 config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
                 config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
-                config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-                config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
               end
             end
 
@@ -96,7 +94,6 @@ workflows:
                   config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
                   config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
                   config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = 'WonderSpaceGallery_AppStore_Profile'
-                  config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
                 end
               end
             end
@@ -108,39 +105,24 @@ workflows:
           pod install
           cd ..
 
-      - name: 🚀 Archive (No Pod Signing)
+      - name: 🚀 Build & Archive
         script: |
           set -e
           mkdir -p build/ios/archive
-          echo "🚀 Building archive without signing frameworks..."
-          xcodebuild -workspace ios/Runner.xcworkspace \
+          xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM=$TEAM_ID \
+            PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID \
             CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             CODE_SIGN_IDENTITY="$CERT_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
-            archive -archivePath "build/ios/archive/Runner.xcarchive" \
             -allowProvisioningUpdates
-
-      - name: 🔧 Remove code signatures from frameworks before export
-        script: |
-          set -e
-          FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
-          echo "🔧 Cleaning old framework signatures..."
-          if [ -d "$FRAMEWORKS_PATH" ]; then
-            find "$FRAMEWORKS_PATH" -type d -name "_CodeSignature" -exec rm -rf {} +
-            for fw in "$FRAMEWORKS_PATH"/*.framework; do
-              echo "→ Unsigned $(basename "$fw")"
-              /usr/bin/codesign --remove-signature "$fw" || true
-            done
-          fi
-          echo "✅ Frameworks unsigned successfully."
 
       - name: 📦 Export Signed IPA
         script: |
@@ -159,6 +141,8 @@ workflows:
             <string>app-store-connect</string>
             <key>teamID</key>
             <string>$TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>manual</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key>
@@ -177,8 +161,7 @@ workflows:
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -allowProvisioningUpdates \
-            -allowProvisioningDeviceRegistration
+            -allowProvisioningUpdates
 
           echo "✅ Export completed."
 
