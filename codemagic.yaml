@@ -115,7 +115,10 @@ workflows:
           set -e
           echo "🚀 Starting Xcode archive..."
           mkdir -p build/ios/archive
+
+          # ✅ Không override signing từ CLI — dùng config trong Podfile
           xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
+
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -123,11 +126,6 @@ workflows:
             -archivePath build/ios/archive/Runner.xcarchive \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            DEVELOPMENT_TEAM=$TEAM_ID \
-            PRODUCT_BUNDLE_IDENTIFIER=$BUNDLE_ID \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="$CERT_NAME" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
             -allowProvisioningUpdates
 
       - name: 📦 Export Signed IPA
