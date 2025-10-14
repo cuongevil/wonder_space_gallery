@@ -32,6 +32,8 @@ workflows:
       - name: 🧾 Create exportOptions.plist
         script: |
           set -e
+          echo "🧾 Creating exportOptions.plist..."
+          mkdir -p build/ios     # ✅ fix lỗi: tạo thư mục trước
           cat > build/ios/exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -53,7 +55,7 @@ workflows:
           </dict>
           </plist>
           EOF
-          echo "✅ exportOptions.plist created."
+          echo "✅ exportOptions.plist created at build/ios/exportOptions.plist"
 
       - name: 🚀 Build iOS Release (Xcode)
         script: |
