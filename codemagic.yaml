@@ -17,7 +17,7 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
-        FLUTTER_BUILD_NUMBER: "8"
+        FLUTTER_BUILD_NUMBER: "9"
 
     scripts:
       - name: 🧹 Clean & Prepare
@@ -159,6 +159,24 @@ workflows:
             done
           fi
           echo "✅ Cleaned invalid CFBundleIdentifiers successfully."
+
+      - name: 🔏 Resign frameworks after cleaning CFBundleIdentifier
+        script: |
+          set -e
+          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          FRAMEWORKS_PATH="$APP_PATH/Frameworks"
+
+          echo "🔏 Resigning all embedded frameworks..."
+          if [ -d "$FRAMEWORKS_PATH" ]; then
+            for framework in "$FRAMEWORKS_PATH"/*.framework; do
+              if [ -d "$framework" ]; then
+                FRAMEWORK_NAME=$(basename "$framework")
+                echo "→ Resigning $FRAMEWORK_NAME"
+                codesign --force --sign "$CERT_NAME" --timestamp=none "$framework"
+              fi
+            done
+          fi
+          echo "✅ All frameworks re-signed successfully."
 
       - name: 📦 Export Signed IPA (App Store)
         script: |
