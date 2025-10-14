@@ -17,211 +17,67 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
-        FLUTTER_BUILD_NUMBER: "11"
 
     scripts:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter project..."
           flutter clean
           flutter pub get
 
-      - name: 🔢 Sync version from pubspec.yaml to Info.plist
+      - name: 🚀 Build iOS release
         script: |
           set -e
-          VERSION_LINE=$(grep 'version:' pubspec.yaml | awk '{print $2}')
-          VERSION_NAME=$(echo $VERSION_LINE | cut -d'+' -f1)
-          VERSION_CODE=$(echo $VERSION_LINE | cut -d'+' -f2)
-          echo "📦 Version: $VERSION_NAME+$VERSION_CODE"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NAME" ios/Runner/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION_CODE" ios/Runner/Info.plist
-          echo "✅ Info.plist synced."
+          flutter build ipa --release \
+            --export-method app-store \
+            --bundle-id $BUNDLE_ID
 
-      - name: 🧩 Fix Podfile (Disable Code Signing for Frameworks)
+      - name: 🔍 Unzip and sanitize CFBundleIdentifiers
         script: |
           set -e
-          cd ios
-          echo "📱 Rewriting Podfile..."
-          cat > Podfile <<'RUBY'
-          platform :ios, '15.0'
-          ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
+          WORK_DIR="build/tmp_ipa"
+          rm -rf "$WORK_DIR"
+          mkdir -p "$WORK_DIR"
+          unzip -q "$IPA_PATH" -d "$WORK_DIR"
+          
+          APP_PATH=$(find "$WORK_DIR" -type d -name "Runner.app" | head -n 1)
+          echo "📁 App path: $APP_PATH"
 
-          project 'Runner', {
-            'Debug' => :debug,
-            'Profile' => :release,
-            'Release' => :release,
-          }
+          echo "🔧 Fixing underscores in frameworks CFBundleIdentifier..."
+          find "$APP_PATH/Frameworks" -name Info.plist | while read plist; do
+            CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
+            if [[ "$CURRENT_ID" == *"_"* ]]; then
+              FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
+              echo "⚙️ $CURRENT_ID → $FIXED_ID"
+              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
+            fi
+          done
 
-          def flutter_root
-            generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
-            raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first." unless File.exist?(generated_xcode_build_settings_path)
-            File.foreach(generated_xcode_build_settings_path) do |line|
-              matches = line.match(/FLUTTER_ROOT\=(.*)/)
-              return matches[1].strip if matches
-            end
-            raise "FLUTTER_ROOT not found"
-          end
-
-          require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
-          flutter_ios_podfile_setup
-
-          target 'Runner' do
-            use_frameworks!
-            use_modular_headers!
-            flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-          end
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              flutter_additional_ios_build_settings(target)
-              target.build_configurations.each do |config|
-                config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
-                config.build_settings['DEVELOPMENT_TEAM'] = ''
-                config.build_settings['CODE_SIGN_IDENTITY'] = ''
-                config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
-                config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
-              end
-            end
-
-            # Manual signing only for Runner
-            installer.aggregate_targets.each do |aggregate_target|
-              aggregate_target.user_project.native_targets.each do |target|
-                next unless target.name == 'Runner'
-                target.build_configurations.each do |config|
-                  config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
-                  config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
-                  config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
-                  config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = 'WonderSpaceGallery_AppStore_Profile'
-                end
-              end
-            end
-          end
-          RUBY
-
-          echo "📦 Installing Pods..."
-          pod repo update
-          pod install
-          cd ..
-
-      - name: 🚀 Build & Archive
+      - name: 🔐 Re-sign app and frameworks manually
         script: |
           set -e
-          echo "🚀 Building Xcode archive..."
-          mkdir -p build/ios/archive
-          xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
+          APP_PATH=$(find build/tmp_ipa -type d -name "Runner.app" | head -n 1)
+          echo "🔐 Re-signing app and frameworks..."
+          find "$APP_PATH/Frameworks" -type d -name "*.framework" | while read framework; do
+            INFO_PLIST="$framework/Info.plist"
+            FRAMEWORK_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO_PLIST" 2>/dev/null || echo "")
+            if [ -n "$FRAMEWORK_ID" ]; then
+              echo "Re-signing: $(basename "$framework") with id $FRAMEWORK_ID"
+              codesign --remove-signature "$framework" || true
+              codesign -f -s "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)" --identifier "$FRAMEWORK_ID" --timestamp=none "$framework"
+            fi
+          done
 
-          xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_IDENTITY="" \
-            -allowProvisioningUpdates
+          codesign -f -s "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)" --entitlements ios/Runner/Runner.entitlements "$APP_PATH"
 
-      - name: 📦 Export Signed IPA
+      - name: 📦 Repack fixed IPA
         script: |
           set -e
-          EXPORT_PATH="build/ios/ipa"
-          ARCHIVE_PATH="build/ios/archive/Runner.xcarchive"
-          EXPORT_OPTIONS="build/ios/exportOptions.plist"
-
-          echo "🧾 Creating exportOptions.plist..."
-          cat > $EXPORT_OPTIONS <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>$TEAM_ID</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>$BUNDLE_ID</key>
-              <string>$PROVISIONING_PROFILE_SPECIFIER</string>
-            </dict>
-            <key>destination</key>
-            <string>export</string>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
-
-          echo "📦 Exporting IPA..."
-          xcodebuild -exportArchive \
-            -archivePath "$ARCHIVE_PATH" \
-            -exportPath "$EXPORT_PATH" \
-            -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -allowProvisioningUpdates \
-            CODE_SIGNING_ALLOWED=NO
-
-          echo "✅ Export completed."
-
-          IPA_PATH=$(find "$EXPORT_PATH" -type f -name "*.ipa" | head -n 1 || true)
-          if [ -z "$IPA_PATH" ]; then
-            echo "❌ IPA not found!"
-            ls -R "$EXPORT_PATH"
-            exit 1
-          fi
-
-          cp "$IPA_PATH" build/Runner.ipa
-          echo "✅ Copied IPA to build/Runner.ipa"
-
-      - name: 🧰 Fix invalid CFBundleIdentifier in frameworks
-        script: |
-          set -e
-          echo "🔍 Fixing invalid CFBundleIdentifier (underscores)..."
-          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          FRAMEWORKS_DIR="$APP_PATH/Frameworks"
-
-          if [ -d "$FRAMEWORKS_DIR" ]; then
-            find "$FRAMEWORKS_DIR" -name Info.plist | while read plist; do
-              CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
-              if [[ "$CURRENT_ID" == *"_"* ]]; then
-                FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
-                echo "⚙️ Fixing $CURRENT_ID → $FIXED_ID"
-                /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
-              fi
-            done
-          else
-            echo "⚠️ No Frameworks folder found."
-          fi
-
-      - name: 🔐 Re-sign frameworks after fixing identifiers
-        script: |
-          set -e
-          echo "🔐 Re-signing frameworks with corrected Bundle IDs..."
-          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          FRAMEWORKS_DIR="$APP_PATH/Frameworks"
-
-          if [ -d "$FRAMEWORKS_DIR" ]; then
-            find "$FRAMEWORKS_DIR" -type d -name "*.framework" | while read framework; do
-              INFO_PLIST="$framework/Info.plist"
-              if [ -f "$INFO_PLIST" ]; then
-                FRAMEWORK_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO_PLIST" 2>/dev/null || echo "")
-                if [ -n "$FRAMEWORK_ID" ]; then
-                  echo "🔧 Re-signing $(basename "$framework") with ID: $FRAMEWORK_ID"
-                  codesign --remove-signature "$framework" || true
-                  codesign --force --sign - --identifier "$FRAMEWORK_ID" "$framework" --timestamp=none
-                fi
-              fi
-            done
-          else
-            echo "⚠️ No Frameworks folder found to re-sign."
-          fi
-
-          echo "✅ Frameworks re-signed successfully."
+          cd build/tmp_ipa
+          zip -qry "../Runner_fixed.ipa" Payload
+          cd ../..
+          echo "✅ Fixed IPA generated: build/Runner_fixed.ipa"
 
     artifacts:
-      - build/Runner.ipa
-      - build/ios/archive/Runner.xcarchive
-      - build/ios/exportOptions.plist
+      - build/Runner_fixed.ipa
