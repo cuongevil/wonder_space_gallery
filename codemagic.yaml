@@ -8,37 +8,30 @@ workflows:
       flutter: stable
       xcode: latest
       groups:
-        - ios_credentials     # ← chứa .p12 + .mobileprovision
+        - ios_credentials
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
       vars:
-        TEAM_ID: "CS2UV6F3ZY"
-        BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
-        CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
-        PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
+        TEAM_ID: $TEAM_ID
+        BUNDLE_ID: $BUNDLE_ID
+        CERT_NAME: $CERT_NAME
+        PROVISIONING_PROFILE_SPECIFIER: $PROFILE_NAME
 
     scripts:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter build..."
+          echo "🧹 Cleaning Flutter project..."
           flutter clean
           flutter pub get
           cd ios
-          pod repo update
-          pod install
+          pod install --repo-update
           cd ..
-
-      - name: 🔎 Debug Certificates
-        script: |
-          echo "🔎 Checking available code signing identities..."
-          security find-identity -v -p codesigning || echo "⚠️ No identities found!"
 
       - name: 🧾 Create exportOptions.plist
         script: |
           set -e
-          mkdir -p build/ios
           cat > build/ios/exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,7 +44,7 @@ workflows:
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key>
-              <string>$PROVISIONING_PROFILE_SPECIFIER</string>
+              <string>$PROFILE_NAME</string>
             </dict>
             <key>compileBitcode</key>
             <false/>
@@ -65,13 +58,13 @@ workflows:
       - name: 🚀 Build iOS Release (Xcode)
         script: |
           set -e
-          echo "🚀 Archiving project with Xcode..."
+          echo "🚀 Archiving app..."
           xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -archivePath build/ios/archive/Runner.xcarchive \
             -configuration Release \
             DEVELOPMENT_TEAM=$TEAM_ID \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
             CODE_SIGN_IDENTITY="$CERT_NAME" \
             clean archive
 
@@ -81,11 +74,11 @@ workflows:
             -exportOptionsPlist build/ios/exportOptions.plist \
             -exportPath build/ios/ipa
 
-          echo "✅ IPA exported to build/ios/ipa"
+          echo "✅ IPA successfully generated in build/ios/ipa"
 
-      - name: 📋 List IPA Output
+      - name: 📋 Show IPA
         script: |
-          echo "📂 IPA files generated:"
+          echo "📂 IPA files:"
           find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:
