@@ -17,7 +17,7 @@ workflows:
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROVISIONING_PROFILE_SPECIFIER: "WonderSpaceGallery_AppStore_Profile"
-        FLUTTER_BUILD_NUMBER: "9"
+        FLUTTER_BUILD_NUMBER: "10"
 
     scripts:
       - name: 🧹 Clean & Prepare
@@ -160,11 +160,17 @@ workflows:
           fi
           echo "✅ Cleaned invalid CFBundleIdentifiers successfully."
 
-      - name: 🔏 Resign frameworks after cleaning CFBundleIdentifier
+      - name: 🔏 Clean & Resign frameworks after cleaning CFBundleIdentifier
         script: |
           set -e
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
           FRAMEWORKS_PATH="$APP_PATH/Frameworks"
+
+          echo "🧹 Removing old code signatures..."
+          if [ -d "$FRAMEWORKS_PATH" ]; then
+            find "$FRAMEWORKS_PATH" -type d -name "_CodeSignature" -exec rm -rf {} +
+          fi
+          echo "✅ Old signatures removed."
 
           echo "🔏 Resigning all embedded frameworks..."
           if [ -d "$FRAMEWORKS_PATH" ]; then
@@ -172,7 +178,7 @@ workflows:
               if [ -d "$framework" ]; then
                 FRAMEWORK_NAME=$(basename "$framework")
                 echo "→ Resigning $FRAMEWORK_NAME"
-                codesign --force --sign "$CERT_NAME" --timestamp=none "$framework"
+                /usr/bin/codesign --force --sign "$CERT_NAME" --timestamp=none --preserve-metadata=identifier,entitlements "$framework"
               fi
             done
           fi
