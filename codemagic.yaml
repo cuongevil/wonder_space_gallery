@@ -12,6 +12,8 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
+        certificate: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
+        provisioning_profile: "WonderSpaceGallery_AppStore_Profile"
       vars:
         TEAM_ID: "CS2UV6F3ZY"
         BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
@@ -177,7 +179,9 @@ workflows:
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -allowProvisioningUpdates
+            -allowProvisioningUpdates \
+            -allowProvisioningDeviceRegistration \
+            -exportSigningIdentity "$CERT_NAME"
 
           echo "✅ Export completed."
 
