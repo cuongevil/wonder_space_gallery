@@ -124,20 +124,6 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
             -allowProvisioningUpdates
 
-      - name: 🔧 Disable code signing for frameworks
-        script: |
-          set -e
-          FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
-          echo "🔧 Removing signatures from all 3rd-party frameworks..."
-          if [ -d "$FRAMEWORKS_PATH" ]; then
-            find "$FRAMEWORKS_PATH" -type d -name "_CodeSignature" -exec rm -rf {} +
-            for fw in "$FRAMEWORKS_PATH"/*.framework; do
-              echo "→ $(basename "$fw")"
-              /usr/bin/codesign --remove-signature "$fw" || true
-            done
-          fi
-          echo "✅ Frameworks unsigned successfully."
-
       - name: 📦 Export Signed IPA
         script: |
           set -e
@@ -152,13 +138,9 @@ workflows:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store-connect</string>
+            <string>app-store</string>
             <key>teamID</key>
             <string>$TEAM_ID</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>signingCertificate</key>
-            <string>$CERT_NAME</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key>
@@ -177,8 +159,7 @@ workflows:
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS" \
-            -allowProvisioningUpdates \
-            -allowProvisioningDeviceRegistration
+            -allowProvisioningUpdates
 
           echo "✅ Export completed."
 
