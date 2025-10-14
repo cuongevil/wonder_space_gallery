@@ -180,6 +180,25 @@ workflows:
           cp "$IPA_PATH" build/Runner.ipa
           echo "✅ Copied IPA to build/Runner.ipa"
 
+      - name: 🧰 Fix invalid CFBundleIdentifier in frameworks
+        script: |
+          set -e
+          echo "🔍 Scanning frameworks for invalid CFBundleIdentifier..."
+          FRAMEWORKS_DIR="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
+
+          if [ -d "$FRAMEWORKS_DIR" ]; then
+            find "$FRAMEWORKS_DIR" -name Info.plist | while read plist; do
+              CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
+              if [[ "$CURRENT_ID" == *"_"* ]]; then
+                FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
+                echo "⚙️ Fixing $CURRENT_ID → $FIXED_ID"
+                /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
+              fi
+            done
+          else
+            echo "⚠️ No Frameworks folder found. Skipping CFBundleIdentifier fix."
+          fi
+
     artifacts:
       - build/Runner.ipa
       - build/ios/archive/Runner.xcarchive
