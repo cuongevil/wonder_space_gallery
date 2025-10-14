@@ -180,7 +180,8 @@ workflows:
         script: |
           set -e
           echo "🔍 Fixing invalid CFBundleIdentifier (underscores)..."
-          FRAMEWORKS_DIR="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
+          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          FRAMEWORKS_DIR="$APP_PATH/Frameworks"
 
           if [ -d "$FRAMEWORKS_DIR" ]; then
             find "$FRAMEWORKS_DIR" -name Info.plist | while read plist; do
@@ -192,26 +193,31 @@ workflows:
               fi
             done
           else
-            echo "⚠️ No Frameworks folder found. Skipping CFBundleIdentifier fix."
+            echo "⚠️ No Frameworks folder found."
           fi
 
-      - name: 🔐 Re-sign frameworks with corrected identifier
+      - name: 🔐 Re-sign frameworks after fixing identifiers
         script: |
           set -e
-          echo "🔐 Re-signing frameworks with their corrected Bundle IDs..."
+          echo "🔐 Re-signing frameworks with corrected Bundle IDs..."
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          FRAMEWORKS_DIR="$APP_PATH/Frameworks"
 
-          find "$APP_PATH/Frameworks" -type d -name "*.framework" | while read framework; do
-            INFO_PLIST="$framework/Info.plist"
-            if [ -f "$INFO_PLIST" ]; then
-              FRAMEWORK_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO_PLIST" 2>/dev/null || echo "")
-              if [ -n "$FRAMEWORK_ID" ]; then
-                echo "🔧 Re-signing $(basename "$framework") with ID: $FRAMEWORK_ID"
-                codesign --remove-signature "$framework" || true
-                codesign --force --sign - --identifier "$FRAMEWORK_ID" "$framework" --timestamp=none
+          if [ -d "$FRAMEWORKS_DIR" ]; then
+            find "$FRAMEWORKS_DIR" -type d -name "*.framework" | while read framework; do
+              INFO_PLIST="$framework/Info.plist"
+              if [ -f "$INFO_PLIST" ]; then
+                FRAMEWORK_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO_PLIST" 2>/dev/null || echo "")
+                if [ -n "$FRAMEWORK_ID" ]; then
+                  echo "🔧 Re-signing $(basename "$framework") with ID: $FRAMEWORK_ID"
+                  codesign --remove-signature "$framework" || true
+                  codesign --force --sign - --identifier "$FRAMEWORK_ID" "$framework" --timestamp=none
+                fi
               fi
-            fi
-          done
+            done
+          else
+            echo "⚠️ No Frameworks folder found to re-sign."
+          fi
 
           echo "✅ Frameworks re-signed successfully."
 
