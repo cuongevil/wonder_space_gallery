@@ -119,6 +119,7 @@ workflows:
           # ✅ Không override signing từ CLI — dùng config trong Podfile
           xcodebuild clean -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release
 
+          # ✅ Disable signing for frameworks explicitly to avoid mismatched IDs
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -126,6 +127,9 @@ workflows:
             -archivePath build/ios/archive/Runner.xcarchive \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_IDENTITY="" \
             -allowProvisioningUpdates
 
       - name: 📦 Export Signed IPA
