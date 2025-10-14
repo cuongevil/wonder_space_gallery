@@ -77,11 +77,13 @@ workflows:
               flutter_additional_ios_build_settings(target)
               target.build_configurations.each do |config|
                 config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-                config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
                 config.build_settings['DEVELOPMENT_TEAM'] = ''
                 config.build_settings['CODE_SIGN_IDENTITY'] = ''
                 config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
                 config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
+                config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+                config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
               end
             end
 
@@ -94,6 +96,7 @@ workflows:
                   config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
                   config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
                   config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = 'WonderSpaceGallery_AppStore_Profile'
+                  config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
                 end
               end
             end
@@ -128,7 +131,7 @@ workflows:
         script: |
           set -e
           FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
-          echo "🔧 Cleaning old code signatures..."
+          echo "🔧 Cleaning old framework signatures..."
           if [ -d "$FRAMEWORKS_PATH" ]; then
             find "$FRAMEWORKS_PATH" -type d -name "_CodeSignature" -exec rm -rf {} +
             for fw in "$FRAMEWORKS_PATH"/*.framework; do
