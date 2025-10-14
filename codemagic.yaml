@@ -124,6 +124,20 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
             -allowProvisioningUpdates
 
+      - name: 🔧 Remove code signatures from frameworks before export
+        script: |
+          set -e
+          FRAMEWORKS_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app/Frameworks"
+          echo "🔧 Cleaning old code signatures..."
+          if [ -d "$FRAMEWORKS_PATH" ]; then
+            find "$FRAMEWORKS_PATH" -type d -name "_CodeSignature" -exec rm -rf {} +
+            for fw in "$FRAMEWORKS_PATH"/*.framework; do
+              echo "→ Unsigned $(basename "$fw")"
+              /usr/bin/codesign --remove-signature "$fw" || true
+            done
+          fi
+          echo "✅ Frameworks unsigned successfully."
+
       - name: 📦 Export Signed IPA
         script: |
           set -e
@@ -138,7 +152,7 @@ workflows:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>teamID</key>
             <string>$TEAM_ID</string>
             <key>provisioningProfiles</key>
