@@ -19,44 +19,26 @@ workflows:
         PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
 
     scripts:
-      - name: 🧹 Clean & Prepare Environment
+      - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter and Pods..."
+          echo "🧹 Cleaning Flutter project..."
           flutter clean
-          rm -rf ios/Pods ios/Podfile.lock ios/Runner.xcworkspace
-          rm -rf ~/Library/Developer/Xcode/DerivedData
           flutter pub get
-          cd ios
-          pod repo update
-          pod install
-          cd ..
-          echo "✅ Environment ready."
+          cd ios && pod repo update && pod install && cd ..
+          echo "✅ Pods installed successfully."
 
-      - name: 🔄 Reset signing deeply
+      - name: 🔄 Deep reset signing
         script: |
           set -e
           echo "🔄 Resetting all signing settings recursively..."
-
-          # 1️⃣ Xóa các dòng CODE_SIGN, PROVISIONING_PROFILE_SPECIFIER, DEVELOPMENT_TEAM
           find ios -name "project.pbxproj" -print0 | while IFS= read -r -d '' file; do
-            echo "🧹 Cleaning signing info in $file ..."
+            echo "🧹 Cleaning $file ..."
             sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' "$file" || true
             sed -i '' '/CODE_SIGN_IDENTITY/d' "$file" || true
             sed -i '' '/DEVELOPMENT_TEAM/d' "$file" || true
             sed -i '' '/CODE_SIGN_STYLE/d' "$file" || true
           done
-
-          # 2️⃣ Force set Pods.xcodeproj sang Automatic
-          if [ -f "ios/Pods/Pods.xcodeproj/project.pbxproj" ]; then
-            echo "⚙️ Forcing Pods.xcodeproj to Automatic signing..."
-            sed -i '' 's/ProvisioningStyle = Manual/ProvisioningStyle = Automatic/g' ios/Pods/Pods.xcodeproj/project.pbxproj || true
-          fi
-
-          # 3️⃣ Kiểm tra lại sau khi xoá
-          echo "🔍 Checking if any PROVISIONING_PROFILE_SPECIFIER remains..."
-          grep -r "PROVISIONING_PROFILE_SPECIFIER" ios || echo "✅ No provisioning profile lines remain."
-
           echo "✅ Deep signing reset completed."
 
       - name: 🧾 Create exportOptions.plist
@@ -77,10 +59,10 @@ workflows:
               <key>${BUNDLE_ID}</key>
               <string>${PROFILE_NAME}</string>
             </dict>
-            <key>compileBitcode</key>
-            <false/>
             <key>destination</key>
             <string>export</string>
+            <key>compileBitcode</key>
+            <false/>
           </dict>
           </plist>
           EOF
@@ -90,44 +72,30 @@ workflows:
         script: |
           set -e
           echo "🚀 Archiving iOS app via Xcode..."
-          mkdir -p build/ios/archive
-          xcodebuild clean -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release | xcpretty
-
-          xcodebuild archive -workspace ios/Runner.xcworkspace \
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
             -destination "generic/platform=iOS" \
             ONLY_ACTIVE_ARCH=NO \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES \
             OTHER_CODE_SIGN_FLAGS="--deep --force" \
             | tee build_log.txt | xcpretty
-  
+          echo "✅ Archive completed."
 
-  if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
-            echo "❌ Archive failed! Showing last 50 lines of Xcode log:"
-            tail -n 50 build_log.txt
-            exit 1
-          fi
-          echo "✅ Archive succeeded."
-
-      - name: 📦 Export IPA
+      - name: 📦 Export signed IPA
         script: |
           set -e
           echo "📦 Exporting signed IPA..."
-          mkdir -p build/ios/ipa
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist build/ios/exportOptions.plist \
-            -exportPath build/ios/ipa \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES | xcpretty
+            -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
 
       - name: 📋 Show IPA
