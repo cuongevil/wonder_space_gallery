@@ -22,7 +22,7 @@ workflows:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter and updating Pods..."
+          echo "🧹 Cleaning Flutter and preparing Pods..."
           flutter clean
           flutter pub get
           cd ios
@@ -62,8 +62,16 @@ workflows:
       - name: 🚀 Build iOS Release (Archive)
         script: |
           set -e
-          echo "🚀 Starting Xcode archive..."
-          xcodebuild -workspace ios/Runner.xcworkspace \
+          echo "🚀 Archiving iOS app via Xcode..."
+          mkdir -p build/ios/archive
+          
+          # Clean project first
+          xcodebuild clean -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release | xcpretty
+          
+          # Archive the app
+          xcodebuild archive -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
@@ -71,8 +79,19 @@ workflows:
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
-            clean archive | xcpretty
-          echo "✅ Archive completed."
+            CODE_SIGNING_REQUIRED=YES | xcpretty
+          
+          echo "✅ Xcode archive created at build/ios/archive/Runner.xcarchive"
+
+      - name: 🧩 Verify Archive
+        script: |
+          set -e
+          echo "🔍 Verifying that the archive exists..."
+          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
+            echo "❌ Archive missing! Build failed before export."
+            exit 1
+          fi
+          echo "✅ Archive found. Proceeding to export."
 
       - name: 🔧 Fix CFBundleIdentifiers in Frameworks
         script: |
@@ -81,11 +100,16 @@ workflows:
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
           find "$APP_PATH/Frameworks" -name Info.plist | while read plist; do
             CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
+            FRAMEWORK_NAME=$(basename "$(dirname "$plist")" .framework)
             if [ -z "$CURRENT_ID" ]; then
-              FRAMEWORK_NAME=$(basename "$(dirname "$plist")" .framework)
               FIXED_ID="${BUNDLE_ID}.${FRAMEWORK_NAME}"
-              echo "⚙️ Adding CFBundleIdentifier: $FIXED_ID"
+              echo "⚙️ Added CFBundleIdentifier: $FIXED_ID"
               /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $FIXED_ID" "$plist" || \
+              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
+            fi
+            if [[ "$CURRENT_ID" == *"_"* ]]; then
+              FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
+              echo "🔄 Sanitized: $CURRENT_ID → $FIXED_ID"
               /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
             fi
           done
@@ -95,6 +119,7 @@ workflows:
         script: |
           set -e
           echo "📦 Exporting signed IPA..."
+          mkdir -p build/ios/ipa
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist build/ios/exportOptions.plist \
@@ -103,9 +128,31 @@ workflows:
             CODE_SIGNING_REQUIRED=YES | xcpretty
           echo "✅ IPA exported successfully."
 
+      - name: 🧾 Verify IPA before upload
+        script: |
+          set -e
+          echo "🔍 Verifying generated IPA contents..."
+          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "❌ IPA not found. Something went wrong during export."
+            exit 1
+          fi
+          unzip -q "$IPA_PATH" -d ipa_check
+          echo "✅ IPA found and unzipped successfully."
+          echo "Checking Info.plist files for valid CFBundleIdentifiers..."
+          find ipa_check -name Info.plist | while read plist; do
+            ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
+            if [ -z "$ID" ]; then
+              echo "❌ Missing CFBundleIdentifier in $plist"
+              exit 1
+            fi
+          done
+          echo "✅ All CFBundleIdentifiers are valid."
+          rm -rf ipa_check
+
       - name: 📋 Show IPA
         script: |
-          echo "📂 Generated IPA files:"
+          echo "📂 Final IPA file(s):"
           find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:
