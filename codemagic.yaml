@@ -64,23 +64,30 @@ workflows:
           set -e
           echo "🚀 Archiving iOS app via Xcode..."
           mkdir -p build/ios/archive
-          
+
           # Clean project first
           xcodebuild clean -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release | xcpretty
-          
-          # Archive the app
+
+          # Archive the app (explicit destination for iOS)
           xcodebuild archive -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
+            -destination "generic/platform=iOS" \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES | xcpretty
-          
+            CODE_SIGNING_REQUIRED=YES | tee build_log.txt | xcpretty
+
+          # Verify archive created successfully
+          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
+            echo "❌ Archive failed! Showing last 50 lines of Xcode log:"
+            tail -n 50 build_log.txt
+            exit 1
+          fi
           echo "✅ Xcode archive created at build/ios/archive/Runner.xcarchive"
 
       - name: 🧩 Verify Archive
