@@ -22,24 +22,10 @@ workflows:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter project..."
           flutter clean
           flutter pub get
           cd ios && pod repo update && pod install && cd ..
-          echo "✅ Pods installed successfully."
-
-      - name: 🔄 Deep reset signing
-        script: |
-          set -e
-          echo "🔄 Resetting all signing settings recursively..."
-          find ios -name "project.pbxproj" -print0 | while IFS= read -r -d '' file; do
-            echo "🧹 Cleaning $file ..."
-            sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' "$file" || true
-            sed -i '' '/CODE_SIGN_IDENTITY/d' "$file" || true
-            sed -i '' '/DEVELOPMENT_TEAM/d' "$file" || true
-            sed -i '' '/CODE_SIGN_STYLE/d' "$file" || true
-          done
-          echo "✅ Deep signing reset completed."
+          echo "✅ Pods ready."
 
       - name: 🧾 Create exportOptions.plist
         script: |
@@ -66,51 +52,51 @@ workflows:
           </dict>
           </plist>
           EOF
-          echo "✅ exportOptions.plist created."
 
-      - name: 🧩 Ensure iOS Scheme
+      - name: 🧩 Ensure Scheme + Archive folder
         script: |
           set -e
-          echo "🔧 Ensuring Runner scheme is shared..."
+          echo "🧩 Ensuring Runner scheme and archive directory..."
+          mkdir -p build/ios/archive
           cd ios
           xcodebuild -list -workspace Runner.xcworkspace
-          xcodebuild -scheme Runner -showBuildSettings
+          if ! xcodebuild -showBuildSettings -workspace Runner.xcworkspace -scheme Runner >/dev/null 2>&1; then
+            echo "⚠️ Scheme Runner not found — regenerating..."
+            flutter build ios --release
+          fi
           cd ..
 
-      - name: 🛠️ Ensure Archive Action in Scheme
+      - name: 🚀 Build iOS Archive
         script: |
           set -e
-          echo "🛠️ Ensuring ArchiveAction is enabled for Runner..."
-          SCHEME_PATH="ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme"
-          if [ -f "$SCHEME_PATH" ]; then
-            grep -q "<ArchiveAction" "$SCHEME_PATH" || \
-              sed -i '' '/<\/BuildActionEntries>/a\
-              <ArchiveAction buildConfiguration="Release" />' "$SCHEME_PATH"
-            echo "✅ ArchiveAction ensured."
-          else
-            echo "⚠️ Scheme file not found at $SCHEME_PATH"
-          fi
-
-      - name: 🚀 Build iOS Release (Archive)
-        script: |
-          set -e
-          echo "🚀 Archiving iOS app via Xcode..."
+          echo "🚀 Running Xcode archive..."
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
             -destination 'generic/platform=iOS,name=Any iOS Device' \
-            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES \
-            OTHER_CODE_SIGN_FLAGS="--deep --force" \
             | tee build_log.txt | xcpretty
-          echo "✅ Archive completed."
+
+          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
+            echo "⚠️ Archive not found in build/ios/archive — checking fallback..."
+            LATEST_ARCHIVE=$(ls -dt ~/Library/Developer/Xcode/Archives/*/*Runner.xcarchive 2>/dev/null | head -n 1)
+            if [ -n "$LATEST_ARCHIVE" ]; then
+              echo "📦 Found fallback archive: $LATEST_ARCHIVE"
+              mkdir -p build/ios/archive
+              cp -R "$LATEST_ARCHIVE" build/ios/archive/Runner.xcarchive
+            else
+              echo "❌ No archive found anywhere!"
+              exit 65
+            fi
+          fi
+          echo "✅ Archive ready at build/ios/archive/Runner.xcarchive"
 
       - name: 📦 Export signed IPA
         script: |
@@ -124,7 +110,7 @@ workflows:
 
       - name: 📋 Show IPA
         script: |
-          echo "📂 Generated IPA files:"
+          echo "📂 IPA files:"
           find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:
