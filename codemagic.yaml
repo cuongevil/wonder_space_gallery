@@ -24,8 +24,26 @@ workflows:
           set -e
           flutter clean
           flutter pub get
-          cd ios && pod repo update && pod install && cd ..
-          echo "✅ Pods ready."
+          flutter precache --ios
+          echo "✅ Flutter environment ready."
+
+      - name: 🔨 Flutter Prebuild (Generate Runner)
+        script: |
+          set -e
+          echo "🔨 Prebuilding Flutter iOS Runner..."
+          flutter build ios --release --no-codesign
+          echo "✅ Flutter iOS build completed."
+
+      - name: 🔧 Pod Reinstall after Prebuild
+        script: |
+          set -e
+          echo "🔧 Reinstalling CocoaPods to fix Flutter/Flutter.h header..."
+          cd ios
+          rm -rf Pods Podfile.lock
+          pod repo update
+          pod install
+          cd ..
+          echo "✅ Pods reinstalled successfully."
 
       - name: 🧾 Create exportOptions.plist
         script: |
@@ -52,14 +70,6 @@ workflows:
           </dict>
           </plist>
           EOF
-          echo "✅ exportOptions.plist created."
-
-      - name: 🔨 Flutter Prebuild (generate Runner)
-        script: |
-          set -e
-          echo "🔨 Prebuilding Flutter iOS Runner..."
-          flutter build ios --release --no-codesign
-          echo "✅ Flutter iOS build completed."
 
       - name: 🚀 Build iOS Archive
         script: |
