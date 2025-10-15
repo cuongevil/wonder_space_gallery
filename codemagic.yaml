@@ -82,6 +82,7 @@ workflows:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES \
             OTHER_CODE_SIGN_FLAGS="--deep --force" \
