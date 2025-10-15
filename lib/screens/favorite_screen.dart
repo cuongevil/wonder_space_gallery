@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui'; // 👈 Cho hiệu ứng nền mờ
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -7,8 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/prompt_item.dart';
-import '../theme/app_theme.dart';
 import '../services/firebase_image_resolver.dart';
+import '../theme/app_theme.dart';
 
 /// 💖 Màn hình ảnh yêu thích
 class FavoriteScreen extends StatefulWidget {
@@ -18,7 +19,8 @@ class FavoriteScreen extends StatefulWidget {
   State<FavoriteScreen> createState() => _FavoriteScreenState();
 }
 
-class _FavoriteScreenState extends State<FavoriteScreen> {
+class _FavoriteScreenState extends State<FavoriteScreen>
+    with TickerProviderStateMixin {
   List<PromptItem> favorites = [];
 
   @override
@@ -52,9 +54,9 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     await prefs.setStringList('favorites', favList);
     setState(() => favorites.removeWhere((e) => e.id == id));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('💔 Đã xóa khỏi yêu thích')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('💔 Đã xóa khỏi yêu thích')));
   }
 
   /// 🔹 Đếm tổng số yêu thích
@@ -69,164 +71,279 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
     List<String> favList = prefs.getStringList('favorites') ?? [];
     bool isFavorite = favList.contains(item.id);
 
+    double dragOffset = 0.0;
+    const double dragToCloseThreshold = 140;
+    final bounceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
     showGeneralDialog(
       context: context,
       barrierLabel: "Chi tiết ảnh yêu thích",
       barrierDismissible: true,
-      barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, __, ___) => Center(
-        child: Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          backgroundColor: Colors.white,
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: StatefulBuilder(
-            builder: (context, setDialogState) => ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.85,
-                maxWidth: 500,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 450),
+      transitionBuilder: (context, animation, secondary, child) {
+        final slideTween = Tween(
+          begin: const Offset(0, 0.1),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeOutCubic));
+        final fadeTween = Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut));
+        final scaleTween = Tween(
+          begin: 0.96,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutBack));
+
+        return SlideTransition(
+          position: animation.drive(slideTween),
+          child: FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: ScaleTransition(
+              scale: animation.drive(scaleTween),
+              child: child,
+            ),
+          ),
+        );
+      },
+      pageBuilder: (_, __, ___) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Stack(
+            children: [
+              // 🌫️ Nền mờ động
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 100),
+                opacity: (1 - (dragOffset / 250)).clamp(0.2, 0.8),
+                child: Container(
+                  color: Colors.black.withOpacity(0.4),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: (8 - dragOffset / 30).clamp(0.0, 8.0),
+                      sigmaY: (8 - dragOffset / 30).clamp(0.0, 8.0),
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
               ),
-              child: FutureBuilder<String>(
-                future: resolveImage(item.image),
-                builder: (context, snap) {
-                  if (!snap.hasData) {
-                    return const SizedBox(
-                      height: 200,
-                      child: Center(child: CircularProgressIndicator()),
-                    );
+
+              // 📸 Popup chi tiết ảnh
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (details) {
+                  dragOffset += details.delta.dy;
+                  if (dragOffset > 0) setDialogState(() {});
+                },
+                onVerticalDragEnd: (_) async {
+                  if (dragOffset > dragToCloseThreshold) {
+                    Navigator.of(context).pop();
+                  } else if (dragOffset > 0) {
+                    final bounceAnim = Tween<double>(begin: dragOffset, end: 0)
+                        .animate(
+                          CurvedAnimation(
+                            parent: bounceCtrl,
+                            curve: Curves.elasticOut,
+                          ),
+                        );
+
+                    bounceCtrl.addListener(() {
+                      setDialogState(() {
+                        dragOffset = bounceAnim.value;
+                      });
+                    });
+                    await bounceCtrl.forward(from: 0);
                   }
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // 🔹 Header
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.cream,
-                          borderRadius:
-                          BorderRadius.vertical(top: Radius.circular(20)),
+                },
+                child: Opacity(
+                  opacity: (1 - (dragOffset / 300)).clamp(0.6, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, dragOffset > 0 ? dragOffset * 0.5 : 0),
+                    child: Center(
+                      child: Dialog(
+                        insetPadding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.close_rounded,
-                                color: AppTheme.inkSoft,
-                              ),
-                              onPressed: () => Navigator.pop(context),
-                            ),
-                          ],
-                        ),
-                      ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.of(context).size.height * 0.9,
+                            maxWidth: 500,
+                          ),
+                          child: FutureBuilder<String>(
+                            future: resolveImage(item.image),
+                            builder: (context, snap) {
+                              if (!snap.hasData) {
+                                return const SizedBox(
+                                  height: 200,
+                                  child: Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              }
 
-                      // 🔹 Ảnh chính
-                      CachedNetworkImage(
-                        imageUrl: snap.data!,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // 🔹 Header
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    decoration: const BoxDecoration(
+                                      color: AppTheme.cream,
+                                      borderRadius: BorderRadius.vertical(
+                                        top: Radius.circular(20),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.title,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            color: AppTheme.inkSoft,
+                                          ),
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
 
-                      // 🔹 Prompt mô tả
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            item.prompt,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: AppTheme.inkSoft,
-                              height: 1.6,
-                            ),
+                                  // 🔹 Ảnh chính
+                                  CachedNetworkImage(
+                                    imageUrl: snap.data!,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+
+                                  // 🔹 Prompt mô tả — cuộn được và không bị che
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Text(
+                                        item.prompt,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: AppTheme.inkSoft,
+                                          height: 1.6,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  const Divider(
+                                    height: 1,
+                                    color: AppTheme.line,
+                                  ),
+
+                                  // 🔹 Nút hành động
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      8,
+                                      12,
+                                      16,
+                                    ),
+                                    child: Wrap(
+                                      alignment: WrapAlignment.center,
+                                      spacing: 10,
+                                      runSpacing: 8,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          onPressed: () {
+                                            Clipboard.setData(
+                                              ClipboardData(text: item.prompt),
+                                            );
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  '✨ Đã sao chép prompt!',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          icon: const Icon(Icons.copy_rounded),
+                                          label: const Text('Sao chép'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                AppTheme.primarySoft,
+                                          ),
+                                        ),
+                                        ElevatedButton.icon(
+                                          onPressed: () => Share.share(
+                                            '${item.title}\n\n${item.prompt}',
+                                          ),
+                                          icon: const Icon(Icons.share_rounded),
+                                          label: const Text('Chia sẻ'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppTheme.primary,
+                                          ),
+                                        ),
+                                        ElevatedButton.icon(
+                                          icon: const Icon(
+                                            Icons.favorite_rounded,
+                                            color: Colors.white,
+                                          ),
+                                          label: Text(
+                                            isFavorite
+                                                ? 'Bỏ yêu thích'
+                                                : 'Yêu thích',
+                                          ),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isFavorite
+                                                ? Colors.pinkAccent
+                                                : AppTheme.lavender,
+                                          ),
+                                          onPressed: () async {
+                                            setDialogState(
+                                              () => isFavorite = !isFavorite,
+                                            );
+                                            if (!isFavorite) {
+                                              await _removeFavorite(item.id);
+                                              Navigator.pop(context);
+                                            } else {
+                                              favList.add(item.id);
+                                              await prefs.setStringList(
+                                                'favorites',
+                                                favList,
+                                              );
+                                            }
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
                       ),
-
-                      const Divider(height: 1, color: AppTheme.line),
-
-                      // 🔹 Các nút hành động
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                        child: Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 10,
-                          runSpacing: 8,
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                Clipboard.setData(
-                                  ClipboardData(text: item.prompt),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('✨ Đã sao chép prompt!'),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.copy_rounded),
-                              label: const Text('Sao chép'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primarySoft,
-                              ),
-                            ),
-                            ElevatedButton.icon(
-                              onPressed: () =>
-                                  Share.share('${item.title}\n\n${item.prompt}'),
-                              icon: const Icon(Icons.share_rounded),
-                              label: const Text('Chia sẻ'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primary,
-                              ),
-                            ),
-                            ElevatedButton.icon(
-                              icon: const Icon(
-                                Icons.favorite_rounded,
-                                color: Colors.white,
-                              ),
-                              label: Text(
-                                isFavorite ? 'Bỏ yêu thích' : 'Yêu thích',
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isFavorite
-                                    ? Colors.pinkAccent
-                                    : AppTheme.lavender,
-                              ),
-                              onPressed: () async {
-                                setDialogState(
-                                        () => isFavorite = !isFavorite);
-                                if (!isFavorite) {
-                                  await _removeFavorite(item.id);
-                                  Navigator.pop(context);
-                                } else {
-                                  favList.add(item.id);
-                                  await prefs.setStringList(
-                                      'favorites', favList);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -283,76 +400,77 @@ class _FavoriteScreenState extends State<FavoriteScreen> {
         ),
         body: favorites.isEmpty
             ? const Center(
-          child: Text(
-            'Chưa có ảnh nào được lưu 💕',
-            style: TextStyle(color: AppTheme.inkSoft),
-          ),
-        )
-            : GridView.builder(
-          padding: const EdgeInsets.all(16),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            childAspectRatio: .9,
-          ),
-          itemCount: favorites.length,
-          itemBuilder: (_, i) {
-            final item = favorites[i];
-            return GestureDetector(
-              onTap: () => _showFavoriteDetail(context, item),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Stack(
-                  children: [
-                    FutureBuilder<String>(
-                      future: resolveImage(item.image),
-                      builder: (context, snap) {
-                        if (!snap.hasData) {
-                          return const Center(
-                            child:
-                            CircularProgressIndicator(strokeWidth: 2),
-                          );
-                        }
-                        return CachedNetworkImage(
-                          imageUrl: snap.data!,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                        );
-                      },
-                    ),
-                    const Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Icon(
-                        Icons.favorite_rounded,
-                        color: Colors.pinkAccent,
-                        size: 26,
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Container(
-                        color: Colors.black54,
-                        padding: const EdgeInsets.all(6),
-                        child: Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Chưa có ảnh nào được lưu 💕',
+                  style: TextStyle(color: AppTheme.inkSoft),
                 ),
+              )
+            : GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                  childAspectRatio: .9,
+                ),
+                itemCount: favorites.length,
+                itemBuilder: (_, i) {
+                  final item = favorites[i];
+                  return GestureDetector(
+                    onTap: () => _showFavoriteDetail(context, item),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Stack(
+                        children: [
+                          FutureBuilder<String>(
+                            future: resolveImage(item.image),
+                            builder: (context, snap) {
+                              if (!snap.hasData) {
+                                return const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                );
+                              }
+                              return CachedNetworkImage(
+                                imageUrl: snap.data!,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                              );
+                            },
+                          ),
+                          const Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Icon(
+                              Icons.favorite_rounded,
+                              color: Colors.pinkAccent,
+                              size: 26,
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Container(
+                              color: Colors.black54,
+                              padding: const EdgeInsets.all(6),
+                              child: Text(
+                                item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
       ),
     );
   }
