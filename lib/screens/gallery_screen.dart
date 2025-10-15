@@ -9,69 +9,15 @@ import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/prompt_item.dart';
 import '../services/app_open_ad_manager.dart';
+import '../services/firebase_image_resolver.dart';
+import '../theme/app_theme.dart';
 import 'favorite_screen.dart';
-
-/// 🎨 Chủ đề pastel Wonder Space Gallery
-class AppTheme {
-  static const Color pink = Color(0xFFF8E8EE);
-  static const Color lavender = Color(0xFFE4D4F0);
-  static const Color cream = Color(0xFFFFF9F5);
-  static const Color ink = Color(0xFF2E2A32);
-  static const Color inkSoft = Color(0xFF6B6670);
-  static const Color line = Color(0xFFE7E3EA);
-  static const Color primary = Color(0xFF7C6DB0);
-  static const Color primarySoft = Color(0xFFA596CC);
-
-  static ThemeData light() => ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: primary,
-      background: cream,
-      surface: Colors.white,
-      primary: primary,
-    ),
-    scaffoldBackgroundColor: cream,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: Colors.transparent,
-      foregroundColor: ink,
-      elevation: 0,
-    ),
-    textTheme: const TextTheme(
-      bodyMedium: TextStyle(fontFamily: 'Nunito', fontSize: 15),
-    ),
-  );
-}
-
-/// 🧩 Model dữ liệu prompt
-class PromptItem {
-  final String id;
-  final String title;
-  final String image;
-  final String prompt;
-  final List<String> tags;
-  final String? category;
-
-  const PromptItem({
-    required this.id,
-    required this.title,
-    required this.image,
-    required this.prompt,
-    required this.tags,
-    this.category,
-  });
-
-  factory PromptItem.fromJson(Map<String, dynamic> j) => PromptItem(
-    id: j['id']?.toString() ?? '',
-    title: j['title']?.toString() ?? '',
-    image: j['image']?.toString() ?? '',
-    prompt: j['prompt']?.toString() ?? '',
-    tags: (j['tags'] is List)
-        ? (j['tags'] as List).map((e) => e.toString()).toList()
-        : [],
-    category: j['category']?.toString(),
-  );
-}
+import 'widgets/dialog_actions.dart';
+import 'widgets/dialog_header.dart';
+import 'widgets/empty_state.dart';
+import 'widgets/favorite_badge.dart';
 
 /// 🖼️ Màn hình chính Wonder Space Gallery
 class GalleryScreen extends StatefulWidget {
@@ -95,13 +41,14 @@ class _GalleryScreenState extends State<GalleryScreen>
   bool _hasMore = true;
 
   late final AnimationController _animCtrl;
-  late final Animation<double> _fadeAnim;
-  late final Animation<Offset> _slideAnim;
 
   @override
   void initState() {
     super.initState();
-    _setupAnimation();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _loadTrending();
     _scrollCtrl.addListener(_onScroll);
     AppOpenAdManager.showAdIfAllowed();
@@ -115,18 +62,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     super.dispose();
   }
 
-  void _setupAnimation() {
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut));
-  }
-
+  /// 🔥 Load dữ liệu trending từ Firebase hoặc cache
   Future<void> _loadTrending({bool forceRefresh = false}) async {
     setState(() {
       _loading = true;
@@ -134,7 +70,6 @@ class _GalleryScreenState extends State<GalleryScreen>
       _all.clear();
       _visible.clear();
       _hasMore = true;
-      _animCtrl.reset();
     });
 
     final prefs = await SharedPreferences.getInstance();
@@ -144,12 +79,12 @@ class _GalleryScreenState extends State<GalleryScreen>
       final ref = FirebaseStorage.instance.ref('prompts/prompts_trending.json');
       final meta = await ref.getMetadata();
       final remoteUpdated = meta.updated?.toIso8601String() ?? '';
-      final isCacheStale =
+      final shouldReload =
           forceRefresh ||
           cachedJson == null ||
           prefs.getString('prompts_meta') != remoteUpdated;
 
-      if (isCacheStale) {
+      if (shouldReload) {
         final url = await ref.getDownloadURL();
         final res = await http.get(Uri.parse(url));
         _parseData(jsonDecode(res.body));
@@ -171,6 +106,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     _animCtrl.forward();
   }
 
+  /// 🧩 Parse danh sách prompt
   void _parseData(Map<String, dynamic> data) {
     final items =
         (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ??
@@ -236,32 +172,32 @@ class _GalleryScreenState extends State<GalleryScreen>
               future: _favoriteCount(),
               builder: (_, snap) {
                 final count = snap.data ?? 0;
-                return Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    IconButton(
-                      tooltip: 'Xem danh sách yêu thích 💖',
-                      onPressed: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const FavoriteScreen(),
-                          ),
-                        );
-                        setState(() {}); // refresh
-                      },
-                      icon: const Icon(
-                        Icons.favorite_rounded,
-                        color: Colors.pinkAccent,
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        tooltip: 'Xem danh sách yêu thích 💖',
+                        onPressed: () async {
+                          await Navigator.of(
+                            context,
+                          ).push(_createFavoriteRoute());
+                          setState(() {});
+                        },
+                        icon: const Icon(
+                          Icons.favorite_rounded,
+                          color: Colors.pinkAccent,
+                        ),
                       ),
-                    ),
-                    if (count > 0)
-                      Positioned(
-                        right: 6,
-                        top: 8,
-                        child: _FavoriteBadge(count: count),
-                      ),
-                  ],
+                      if (count > 0)
+                        Positioned(
+                          right: 4,
+                          top: 6,
+                          child: FavoriteBadge(count: count),
+                        ),
+                    ],
+                  ),
                 );
               },
             ),
@@ -299,7 +235,7 @@ class _GalleryScreenState extends State<GalleryScreen>
               padding: const EdgeInsets.all(16),
               children: [
                 _visible.isEmpty
-                    ? const _EmptyState()
+                    ? const EmptyState()
                     : _GalleryGrid(items: _visible),
                 if (_loadingMore)
                   const Padding(
@@ -315,30 +251,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 }
 
-class _FavoriteBadge extends StatelessWidget {
-  final int count;
-
-  const _FavoriteBadge({required this.count});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(3),
-    decoration: const BoxDecoration(
-      color: Colors.redAccent,
-      shape: BoxShape.circle,
-    ),
-    child: Text(
-      '$count',
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-      ),
-    ),
-  );
-}
-
-/// 🧩 Lưới ảnh
+/// Lưới ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
 
@@ -401,7 +314,7 @@ class _GalleryCardState extends State<_GalleryCard> {
         child: Stack(
           children: [
             FutureBuilder<String>(
-              future: _resolveImage(widget.item.image),
+              future: resolveImage(widget.item.image),
               builder: (_, snap) {
                 if (!snap.hasData) {
                   return const Center(
@@ -453,6 +366,7 @@ class _GalleryCardState extends State<_GalleryCard> {
     );
   }
 
+  /// Hiển thị popup chi tiết với hiệu ứng slide + zoom + fade
   Future<void> _showDetail(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     var fav = prefs.getStringList('favorites') ?? [];
@@ -463,7 +377,32 @@ class _GalleryCardState extends State<_GalleryCard> {
       barrierLabel: "Chi tiết ảnh",
       barrierDismissible: true,
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 300),
+      transitionDuration: const Duration(milliseconds: 450),
+      transitionBuilder: (context, animation, secondary, child) {
+        final slideTween = Tween(
+          begin: const Offset(0, 0.1),
+          end: Offset.zero,
+        ).chain(CurveTween(curve: Curves.easeOutCubic));
+        final fadeTween = Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut));
+        final scaleTween = Tween(
+          begin: 0.96,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOutBack));
+
+        return SlideTransition(
+          position: animation.drive(slideTween),
+          child: FadeTransition(
+            opacity: animation.drive(fadeTween),
+            child: ScaleTransition(
+              scale: animation.drive(scaleTween),
+              child: child,
+            ),
+          ),
+        );
+      },
       pageBuilder: (_, __, ___) => Center(
         child: Dialog(
           insetPadding: const EdgeInsets.all(16),
@@ -475,9 +414,9 @@ class _GalleryCardState extends State<_GalleryCard> {
             builder: (context, setDialogState) => Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _DialogHeader(title: widget.item.title),
+                DialogHeader(title: widget.item.title),
                 FutureBuilder<String>(
-                  future: _resolveImage(widget.item.image),
+                  future: resolveImage(widget.item.image),
                   builder: (_, snap) => snap.hasData
                       ? CachedNetworkImage(imageUrl: snap.data!)
                       : const Padding(
@@ -499,7 +438,7 @@ class _GalleryCardState extends State<_GalleryCard> {
                   ),
                 ),
                 const Divider(height: 1, color: AppTheme.line),
-                _DialogActions(
+                DialogActions(
                   isFavorite: isFav,
                   onCopy: () {
                     Clipboard.setData(ClipboardData(text: widget.item.prompt));
@@ -537,107 +476,31 @@ class _GalleryCardState extends State<_GalleryCard> {
   }
 }
 
-class _DialogHeader extends StatelessWidget {
-  final String title;
+/// Hiệu ứng slide + fade khi mở FavoriteScreen
+Route _createFavoriteRoute() {
+  return PageRouteBuilder(
+    pageBuilder: (context, animation, secondaryAnimation) =>
+        const FavoriteScreen(),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      const begin = Offset(0.1, 0.0);
+      const end = Offset.zero;
+      const curve = Curves.easeOutCubic;
 
-  const _DialogHeader({required this.title});
+      final slide = Tween(
+        begin: begin,
+        end: end,
+      ).chain(CurveTween(curve: curve));
+      final fade = Tween<double>(
+        begin: 0.0,
+        end: 1.0,
+      ).chain(CurveTween(curve: curve));
 
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    decoration: const BoxDecoration(
-      color: AppTheme.cream,
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close_rounded, color: AppTheme.inkSoft),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ],
-    ),
+      return SlideTransition(
+        position: animation.drive(slide),
+        child: FadeTransition(opacity: animation.drive(fade), child: child),
+      );
+    },
+    transitionDuration: const Duration(milliseconds: 400),
+    reverseTransitionDuration: const Duration(milliseconds: 250),
   );
-}
-
-class _DialogActions extends StatelessWidget {
-  final VoidCallback onCopy, onShare, onToggleFavorite;
-  final bool isFavorite;
-
-  const _DialogActions({
-    required this.onCopy,
-    required this.onShare,
-    required this.onToggleFavorite,
-    required this.isFavorite,
-  });
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-    child: Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 10,
-      children: [
-        ElevatedButton.icon(
-          icon: const Icon(Icons.copy_rounded),
-          label: const Text('Sao chép'),
-          onPressed: onCopy,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primarySoft,
-          ),
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.share_rounded),
-          label: const Text('Chia sẻ'),
-          onPressed: onShare,
-          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
-        ),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.favorite_rounded, color: Colors.white),
-          label: Text(isFavorite ? 'Bỏ yêu thích' : 'Yêu thích'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isFavorite ? Colors.pinkAccent : AppTheme.lavender,
-          ),
-          onPressed: onToggleFavorite,
-        ),
-      ],
-    ),
-  );
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: Padding(
-      padding: EdgeInsets.all(40),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.image_not_supported, size: 48, color: AppTheme.inkSoft),
-          SizedBox(height: 8),
-          Text(
-            'Không tìm thấy ảnh phù hợp',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          SizedBox(height: 4),
-          Text('Hãy thử từ khóa khác nhé.'),
-        ],
-      ),
-    ),
-  );
-}
-
-/// Resolve ảnh từ Firebase
-Future<String> _resolveImage(String path) async {
-  if (path.startsWith('http')) return path;
-  return FirebaseStorage.instance.ref(path).getDownloadURL();
 }
