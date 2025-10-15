@@ -19,31 +19,27 @@ workflows:
         PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
 
     scripts:
-      - name: 🧹 Clean & Prepare
+      - name: 🧹 Clean & Install Pods first
         script: |
           set -e
+          echo "🧹 Cleaning Flutter build..."
           flutter clean
           flutter pub get
           flutter precache --ios
-          echo "✅ Flutter environment ready."
+
+          echo "📦 Installing CocoaPods..."
+          cd ios
+          pod repo update
+          pod install
+          cd ..
+          echo "✅ CocoaPods installed successfully."
 
       - name: 🔨 Flutter Prebuild (Generate Runner)
         script: |
           set -e
-          echo "🔨 Prebuilding Flutter iOS Runner..."
+          echo "🔨 Building Flutter iOS Runner..."
           flutter build ios --release --no-codesign
           echo "✅ Flutter iOS build completed."
-
-      - name: 🔧 Pod Reinstall after Prebuild
-        script: |
-          set -e
-          echo "🔧 Reinstalling CocoaPods to fix Flutter/Flutter.h header..."
-          cd ios
-          rm -rf Pods Podfile.lock
-          pod repo update
-          pod install
-          cd ..
-          echo "✅ Pods reinstalled successfully."
 
       - name: 🧾 Create exportOptions.plist
         script: |
@@ -70,6 +66,7 @@ workflows:
           </dict>
           </plist>
           EOF
+          echo "✅ exportOptions.plist created."
 
       - name: 🚀 Build iOS Archive
         script: |
