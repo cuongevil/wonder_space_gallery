@@ -52,24 +52,20 @@ workflows:
           </dict>
           </plist>
           EOF
+          echo "✅ exportOptions.plist created."
 
-      - name: 🧩 Ensure Scheme + Archive folder
+      - name: 🔨 Flutter Prebuild (generate Runner)
         script: |
           set -e
-          echo "🧩 Ensuring Runner scheme and archive directory..."
-          mkdir -p build/ios/archive
-          cd ios
-          xcodebuild -list -workspace Runner.xcworkspace
-          if ! xcodebuild -showBuildSettings -workspace Runner.xcworkspace -scheme Runner >/dev/null 2>&1; then
-            echo "⚠️ Scheme Runner not found — regenerating..."
-            flutter build ios --release
-          fi
-          cd ..
+          echo "🔨 Prebuilding Flutter iOS Runner..."
+          flutter build ios --release --no-codesign
+          echo "✅ Flutter iOS build completed."
 
       - name: 🚀 Build iOS Archive
         script: |
           set -e
           echo "🚀 Running Xcode archive..."
+          mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
