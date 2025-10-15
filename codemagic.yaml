@@ -100,13 +100,17 @@ workflows:
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
             -destination "generic/platform=iOS" \
+            ONLY_ACTIVE_ARCH=NO \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES | tee build_log.txt | xcpretty
+            CODE_SIGNING_REQUIRED=YES \
+            OTHER_CODE_SIGN_FLAGS="--deep --force" \
+            | tee build_log.txt | xcpretty
+  
 
-          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
+  if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
             echo "❌ Archive failed! Showing last 50 lines of Xcode log:"
             tail -n 50 build_log.txt
             exit 1
