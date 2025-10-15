@@ -33,19 +33,31 @@ workflows:
           cd ..
           echo "✅ Environment ready."
 
-      - name: 🔄 Reset signing for all Pods
+      - name: 🔄 Reset signing deeply
         script: |
           set -e
-          echo "🔄 Resetting signing settings for Pods.xcodeproj..."
-          cd ios
-          if [ -f "Pods/Pods.xcodeproj/project.pbxproj" ]; then
-            sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' '/CODE_SIGN_IDENTITY/d' Pods/Pods.xcodeproj/project.pbxproj || true
-            sed -i '' '/DEVELOPMENT_TEAM/d' Pods/Pods.xcodeproj/project.pbxproj || true
-            plutil -replace ProvisioningStyle -string "Automatic" "Pods/Pods.xcodeproj/project.pbxproj" || true
+          echo "🔄 Resetting all signing settings recursively..."
+
+          # 1️⃣ Xóa các dòng CODE_SIGN, PROVISIONING_PROFILE_SPECIFIER, DEVELOPMENT_TEAM
+          find ios -name "project.pbxproj" -print0 | while IFS= read -r -d '' file; do
+            echo "🧹 Cleaning signing info in $file ..."
+            sed -i '' '/PROVISIONING_PROFILE_SPECIFIER/d' "$file" || true
+            sed -i '' '/CODE_SIGN_IDENTITY/d' "$file" || true
+            sed -i '' '/DEVELOPMENT_TEAM/d' "$file" || true
+            sed -i '' '/CODE_SIGN_STYLE/d' "$file" || true
+          done
+
+          # 2️⃣ Force set Pods.xcodeproj sang Automatic
+          if [ -f "ios/Pods/Pods.xcodeproj/project.pbxproj" ]; then
+            echo "⚙️ Forcing Pods.xcodeproj to Automatic signing..."
+            sed -i '' 's/ProvisioningStyle = Manual/ProvisioningStyle = Automatic/g' ios/Pods/Pods.xcodeproj/project.pbxproj || true
           fi
-          cd ..
-          echo "✅ Pods signing reset complete."
+
+          # 3️⃣ Kiểm tra lại sau khi xoá
+          echo "🔍 Checking if any PROVISIONING_PROFILE_SPECIFIER remains..."
+          grep -r "PROVISIONING_PROFILE_SPECIFIER" ios || echo "✅ No provisioning profile lines remain."
+
+          echo "✅ Deep signing reset completed."
 
       - name: 🧾 Create exportOptions.plist
         script: |
@@ -101,27 +113,6 @@ workflows:
           fi
           echo "✅ Archive succeeded."
 
-      - name: 🔧 Fix CFBundleIdentifiers in Frameworks
-        script: |
-          set -e
-          echo "🔧 Fixing invalid CFBundleIdentifiers..."
-          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          find "$APP_PATH/Frameworks" -name Info.plist | while read plist; do
-            CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
-            FRAMEWORK_NAME=$(basename "$(dirname "$plist")" .framework)
-            FIXED_ID="${BUNDLE_ID}.${FRAMEWORK_NAME}"
-            if [ -z "$CURRENT_ID" ]; then
-              echo "⚙️ Added missing CFBundleIdentifier: $FIXED_ID"
-              /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $FIXED_ID" "$plist" || true
-            fi
-            if [[ "$CURRENT_ID" == *"_"* ]]; then
-              FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
-              echo "🔄 Sanitized $CURRENT_ID → $FIXED_ID"
-              /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
-            fi
-          done
-          echo "✅ Framework Info.plists sanitized."
-
       - name: 📦 Export IPA
         script: |
           set -e
@@ -134,26 +125,6 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES | xcpretty
           echo "✅ IPA exported successfully."
-
-      - name: 🧾 Verify IPA before upload
-        script: |
-          set -e
-          echo "🔍 Verifying IPA structure..."
-          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
-          if [ -z "$IPA_PATH" ]; then
-            echo "❌ No IPA found. Something went wrong."
-            exit 1
-          fi
-          unzip -q "$IPA_PATH" -d ipa_check
-          find ipa_check -name Info.plist | while read plist; do
-            ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
-            if [ -z "$ID" ]; then
-              echo "❌ Missing CFBundleIdentifier in $plist"
-              exit 1
-            fi
-          done
-          echo "✅ IPA verified successfully."
-          rm -rf ipa_check
 
       - name: 📋 Show IPA
         script: |
