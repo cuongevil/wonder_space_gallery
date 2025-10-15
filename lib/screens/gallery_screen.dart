@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui'; // 👈 Dành cho hiệu ứng mờ nền
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -251,7 +252,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 }
 
-/// Lưới ảnh
+/// 🧩 Lưới ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
 
@@ -282,7 +283,8 @@ class _GalleryCard extends StatefulWidget {
   State<_GalleryCard> createState() => _GalleryCardState();
 }
 
-class _GalleryCardState extends State<_GalleryCard> {
+class _GalleryCardState extends State<_GalleryCard>
+    with SingleTickerProviderStateMixin {
   bool _isFavorite = false;
 
   @override
@@ -366,17 +368,25 @@ class _GalleryCardState extends State<_GalleryCard> {
     );
   }
 
-  /// Hiển thị popup chi tiết với hiệu ứng slide + zoom + fade
+  /// 💫 Popup chi tiết ảnh — slide + zoom + fade + blur động + vuốt đóng + bounce
   Future<void> _showDetail(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     var fav = prefs.getStringList('favorites') ?? [];
     bool isFav = fav.contains(widget.item.id);
 
+    double dragOffset = 0.0;
+    const double dragToCloseThreshold = 140;
+
+    final bounceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
     showGeneralDialog(
       context: context,
       barrierLabel: "Chi tiết ảnh",
       barrierDismissible: true,
-      barrierColor: Colors.black54,
+      barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 450),
       transitionBuilder: (context, animation, secondary, child) {
         final slideTween = Tween(
@@ -403,80 +413,136 @@ class _GalleryCardState extends State<_GalleryCard> {
           ),
         );
       },
-      pageBuilder: (_, __, ___) => Center(
-        child: Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: StatefulBuilder(
-            builder: (context, setDialogState) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DialogHeader(title: widget.item.title),
-                FutureBuilder<String>(
-                  future: resolveImage(widget.item.image),
-                  builder: (_, snap) => snap.hasData
-                      ? CachedNetworkImage(imageUrl: snap.data!)
-                      : const Padding(
-                          padding: EdgeInsets.all(32),
-                          child: CircularProgressIndicator(),
-                        ),
+      pageBuilder: (_, __, ___) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Stack(
+            children: [
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 100),
+                opacity: (1 - (dragOffset / 250)).clamp(0.2, 0.8),
+                child: Container(
+                  color: Colors.black.withOpacity(0.4),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: (8 - dragOffset / 30).clamp(0.0, 8.0),
+                      sigmaY: (8 - dragOffset / 30).clamp(0.0, 8.0),
+                    ),
+                    child: const SizedBox.expand(),
+                  ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      widget.item.prompt,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: AppTheme.inkSoft,
-                        height: 1.6,
+              ),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (details) {
+                  dragOffset += details.delta.dy;
+                  if (dragOffset > 0) setDialogState(() {});
+                },
+                onVerticalDragEnd: (_) async {
+                  if (dragOffset > dragToCloseThreshold) {
+                    Navigator.of(context).pop();
+                  } else if (dragOffset > 0) {
+                    final bounceAnim = Tween<double>(begin: dragOffset, end: 0)
+                        .animate(
+                          CurvedAnimation(
+                            parent: bounceCtrl,
+                            curve: Curves.elasticOut,
+                          ),
+                        );
+                    bounceCtrl.addListener(() {
+                      setDialogState(() {
+                        dragOffset = bounceAnim.value;
+                      });
+                    });
+                    await bounceCtrl.forward(from: 0);
+                  }
+                },
+                child: Opacity(
+                  opacity: (1 - (dragOffset / 300)).clamp(0.6, 1.0),
+                  child: Transform.translate(
+                    offset: Offset(0, dragOffset > 0 ? dragOffset * 0.5 : 0),
+                    child: Center(
+                      child: Dialog(
+                        insetPadding: const EdgeInsets.all(16),
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            DialogHeader(title: widget.item.title),
+                            FutureBuilder<String>(
+                              future: resolveImage(widget.item.image),
+                              builder: (_, snap) => snap.hasData
+                                  ? CachedNetworkImage(imageUrl: snap.data!)
+                                  : const Padding(
+                                      padding: EdgeInsets.all(32),
+                                      child: CircularProgressIndicator(),
+                                    ),
+                            ),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  widget.item.prompt,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    color: AppTheme.inkSoft,
+                                    height: 1.6,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const Divider(height: 1, color: AppTheme.line),
+                            DialogActions(
+                              isFavorite: isFav,
+                              onCopy: () {
+                                Clipboard.setData(
+                                  ClipboardData(text: widget.item.prompt),
+                                );
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✨ Đã sao chép!'),
+                                  ),
+                                );
+                              },
+                              onShare: () => Share.share(
+                                '${widget.item.title}\n\n${widget.item.prompt}',
+                              ),
+                              onToggleFavorite: () async {
+                                setDialogState(() => isFav = !isFav);
+                                setState(() => _isFavorite = isFav);
+                                isFav
+                                    ? fav.add(widget.item.id)
+                                    : fav.remove(widget.item.id);
+                                await prefs.setStringList('favorites', fav);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      isFav
+                                          ? '💖 Đã lưu vào yêu thích!'
+                                          : '🗑️ Đã xóa khỏi yêu thích!',
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-                const Divider(height: 1, color: AppTheme.line),
-                DialogActions(
-                  isFavorite: isFav,
-                  onCopy: () {
-                    Clipboard.setData(ClipboardData(text: widget.item.prompt));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✨ Đã sao chép!')),
-                    );
-                  },
-                  onShare: () => Share.share(
-                    '${widget.item.title}\n\n${widget.item.prompt}',
-                  ),
-                  onToggleFavorite: () async {
-                    setDialogState(() => isFav = !isFav);
-                    setState(() => _isFavorite = isFav);
-                    isFav
-                        ? fav.add(widget.item.id)
-                        : fav.remove(widget.item.id);
-                    await prefs.setStringList('favorites', fav);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          isFav
-                              ? '💖 Đã lưu vào yêu thích!'
-                              : '🗑️ Đã xóa khỏi yêu thích!',
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-/// Hiệu ứng slide + fade khi mở FavoriteScreen
+/// 🎬 Hiệu ứng slide + fade khi mở FavoriteScreen
 Route _createFavoriteRoute() {
   return PageRouteBuilder(
     pageBuilder: (context, animation, secondaryAnimation) =>
