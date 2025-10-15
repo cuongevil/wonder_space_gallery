@@ -18,7 +18,6 @@ import 'favorite_screen.dart';
 import 'widgets/dialog_actions.dart';
 import 'widgets/dialog_header.dart';
 import 'widgets/empty_state.dart';
-import 'widgets/favorite_badge.dart';
 
 /// 🖼️ Màn hình chính Wonder Space Gallery
 class GalleryScreen extends StatefulWidget {
@@ -159,57 +158,8 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: AppTheme.light(),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            '🎨 Thư Viện Ảnh',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-          ),
-          actions: [
-            FutureBuilder<int>(
-              future: _favoriteCount(),
-              builder: (_, snap) {
-                final count = snap.data ?? 0;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      IconButton(
-                        tooltip: 'Xem danh sách yêu thích 💖',
-                        onPressed: () async {
-                          await Navigator.of(
-                            context,
-                          ).push(_createFavoriteRoute());
-                          setState(() {});
-                        },
-                        icon: const Icon(
-                          Icons.favorite_rounded,
-                          color: Colors.pinkAccent,
-                        ),
-                      ),
-                      if (count > 0)
-                        Positioned(
-                          right: 4,
-                          top: 6,
-                          child: FavoriteBadge(count: count),
-                        ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-        body: _buildBody(),
-      ),
-    );
-  }
-
-  Widget _buildBody() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text(_error!));
 
@@ -221,9 +171,24 @@ class _GalleryScreenState extends State<GalleryScreen>
           child: TextField(
             controller: _searchCtrl,
             onChanged: (_) => _applyFilters(),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search_rounded),
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search_rounded),
               hintText: 'Tìm kiếm...',
+              suffixIcon: _searchCtrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded),
+                      onPressed: () {
+                        _searchCtrl.clear();
+                        setState(_applyFilters);
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
         ),

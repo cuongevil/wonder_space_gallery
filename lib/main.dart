@@ -3,9 +3,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:wonderspace.gallery/screens/main_screen.dart';
 
 import 'firebase_options.dart';
-import 'screens/gallery_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,8 +37,8 @@ Future<void> _initAdMob() async {
     for (final entry in status.adapterStatuses.entries) {
       debugPrint(
         '📢 [AdMob] Adapter: ${entry.key}, '
-            'State: ${entry.value.state}, '
-            'Latency: ${entry.value.latency} ms',
+        'State: ${entry.value.state}, '
+        'Latency: ${entry.value.latency} ms',
       );
     }
 
@@ -77,7 +77,7 @@ class WonderSpaceGalleryApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
         useMaterial3: true,
       ),
-      home: const GalleryScreen(),
+      home: const MainScreen(),
     );
   }
 }
