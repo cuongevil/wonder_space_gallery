@@ -10,46 +10,59 @@ import 'screens/gallery_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Khởi tạo Google Mobile Ads SDK
-  try {
-    final status = await MobileAds.instance.initialize();
-    for (final entry in status.adapterStatuses.entries) {
-      debugPrint(
-        '📢 [AdMob] Adapter: ${entry.key}, '
-            'state: ${entry.value.state}, '
-            'latency: ${entry.value.latency} ms',
-      );
-    }
-    debugPrint('✅ Google Mobile Ads SDK initialized thành công');
-  } catch (e, st) {
-    debugPrint('❌ Lỗi khởi tạo MobileAds: $e\n$st');
-  }
+  await _initFirebase();
+  await _initAdMob();
+  await _initAppCheck();
 
-  // ✅ Khởi tạo Firebase
+  runApp(const WonderSpaceGalleryApp());
+}
+
+/// ✅ Khởi tạo Firebase
+Future<void> _initFirebase() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    debugPrint('🔥 Firebase initialized thành công');
+    debugPrint('🔥 [Firebase] Initialized successfully');
   } catch (e, st) {
-    debugPrint('❌ Lỗi khởi tạo Firebase: $e\n$st');
+    debugPrint('❌ [Firebase] Initialization failed: $e\n$st');
   }
+}
 
-  // ✅ Bật App Check (Play Integrity ở release)
+/// ✅ Khởi tạo Google Mobile Ads SDK
+Future<void> _initAdMob() async {
+  try {
+    final status = await MobileAds.instance.initialize();
+
+    for (final entry in status.adapterStatuses.entries) {
+      debugPrint(
+        '📢 [AdMob] Adapter: ${entry.key}, '
+            'State: ${entry.value.state}, '
+            'Latency: ${entry.value.latency} ms',
+      );
+    }
+
+    debugPrint('✅ [AdMob] SDK initialized successfully');
+  } catch (e, st) {
+    debugPrint('❌ [AdMob] Initialization failed: $e\n$st');
+  }
+}
+
+/// ✅ Bật Firebase App Check (Play Integrity trên release)
+Future<void> _initAppCheck() async {
   try {
     await FirebaseAppCheck.instance.activate(
-      androidProvider:
-      kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider:
-      kDebugMode ? AppleProvider.debug : AppleProvider.deviceCheck,
+      androidProvider: kDebugMode
+          ? AndroidProvider.debug
+          : AndroidProvider.playIntegrity,
+      appleProvider: kDebugMode
+          ? AppleProvider.debug
+          : AppleProvider.deviceCheck,
     );
-    debugPrint('🔒 Firebase App Check activated');
+    debugPrint('🔒 [AppCheck] Activated successfully');
   } catch (e, st) {
-    debugPrint('⚠️ Không thể kích hoạt App Check: $e\n$st');
+    debugPrint('⚠️ [AppCheck] Activation failed: $e\n$st');
   }
-
-  // ✅ Khởi chạy ứng dụng
-  runApp(const WonderSpaceGalleryApp());
 }
 
 class WonderSpaceGalleryApp extends StatelessWidget {
