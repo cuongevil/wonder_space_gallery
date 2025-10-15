@@ -38,6 +38,23 @@ workflows:
         script: |
           set -e
           echo "🔨 Building Flutter iOS Runner..."
+
+          # 🩹 FIX: Ensure Flutter.framework exists and linked before build
+          mkdir -p ios/Flutter
+          FLUTTER_ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine/ios
+          if [ -d "$FLUTTER_ENGINE_DIR/Flutter.framework" ]; then
+            echo "🔗 Copying Flutter.framework manually..."
+            cp -R "$FLUTTER_ENGINE_DIR/Flutter.framework" ios/Flutter/
+          else
+            echo "⚠️ Flutter.framework not found in cache; forcing precache..."
+            flutter precache --ios
+            cp -R "$FLUTTER_ENGINE_DIR/Flutter.framework" ios/Flutter/
+          fi
+
+          echo "📚 Verifying Flutter.framework headers..."
+          ls ios/Flutter/Flutter.framework/Headers || echo "❌ Headers missing!"
+
+          # 🔨 Build Flutter iOS app without signing
           flutter build ios --release --no-codesign
           echo "✅ Flutter iOS build completed."
 

@@ -40,7 +40,6 @@ post_install do |installer|
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # Disable signing cho tất cả Pods
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
       config.build_settings['DEVELOPMENT_TEAM'] = ''
@@ -48,7 +47,7 @@ post_install do |installer|
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
 
-      # ✅ Thêm fix thiếu Flutter/Flutter.h
+      # ✅ Fix thiếu Flutter/Flutter.h
       flutter_framework_dir = File.join(File.dirname(`which flutter`.strip), '..', 'bin', 'cache', 'artifacts', 'engine', 'ios')
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_dir
@@ -57,7 +56,7 @@ post_install do |installer|
     end
   end
 
-  # Manual signing chỉ cho Runner
+  # Manual signing cho Runner
   installer.aggregate_targets.each do |aggregate_target|
     aggregate_target.user_project.native_targets.each do |target|
       next unless target.name == 'Runner'
@@ -72,3 +71,4 @@ post_install do |installer|
 
   puts "✅ post_install completed: Flutter.framework header linked & signing fixed."
 end
+
