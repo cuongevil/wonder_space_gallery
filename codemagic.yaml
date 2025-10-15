@@ -22,9 +22,15 @@ workflows:
       - name: 🧹 Clean & Prepare
         script: |
           set -e
+          echo "🧹 Cleaning Flutter and updating Pods..."
           flutter clean
           flutter pub get
-          cd ios && pod install --repo-update && cd ..
+          cd ios
+          pod deintegrate
+          pod repo update
+          pod install --repo-update
+          cd ..
+          echo "✅ Environment ready."
 
       - name: 🧾 Create exportOptions.plist
         script: |
@@ -51,48 +57,55 @@ workflows:
           </dict>
           </plist>
           EOF
+          echo "✅ exportOptions.plist created."
 
-      - name: 🚀 Build iOS Release (Xcode)
+      - name: 🚀 Build iOS Release (Archive)
         script: |
           set -e
-          echo "🚀 Archiving app..."
+          echo "🚀 Starting Xcode archive..."
           xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \
-            -archivePath build/ios/archive/Runner.xcarchive \
             -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            clean archive
+            CODE_SIGNING_ALLOWED=YES \
+            clean archive | xcpretty
+          echo "✅ Archive completed."
 
-      - name: 🔧 Sanitize CFBundleIdentifier in Frameworks
+      - name: 🔧 Fix CFBundleIdentifiers in Frameworks
         script: |
           set -e
-          echo "🔧 Fixing invalid CFBundleIdentifiers (replace '_' with '-')..."
+          echo "🔧 Checking and fixing framework Info.plist identifiers..."
           APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
           find "$APP_PATH/Frameworks" -name Info.plist | while read plist; do
             CURRENT_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$plist" 2>/dev/null || true)
-            if [[ "$CURRENT_ID" == *"_"* ]]; then
-              FIXED_ID=$(echo "$CURRENT_ID" | sed 's/_/-/g')
-              echo "⚙️ $CURRENT_ID → $FIXED_ID"
+            if [ -z "$CURRENT_ID" ]; then
+              FRAMEWORK_NAME=$(basename "$(dirname "$plist")" .framework)
+              FIXED_ID="${BUNDLE_ID}.${FRAMEWORK_NAME}"
+              echo "⚙️ Adding CFBundleIdentifier: $FIXED_ID"
+              /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $FIXED_ID" "$plist" || \
               /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FIXED_ID" "$plist" || true
             fi
           done
-          echo "✅ CFBundleIdentifier sanitized."
+          echo "✅ All framework Info.plist files sanitized."
 
-      - name: 📦 Export fixed IPA
+      - name: 📦 Export IPA (Final)
         script: |
           set -e
-          echo "📦 Exporting IPA..."
+          echo "📦 Exporting signed IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist build/ios/exportOptions.plist \
-            -exportPath build/ios/ipa
-          echo "✅ IPA successfully generated in build/ios/ipa"
+            -exportPath build/ios/ipa \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES | xcpretty
+          echo "✅ IPA exported successfully."
 
       - name: 📋 Show IPA
         script: |
-          echo "📂 IPA files:"
+          echo "📂 Generated IPA files:"
           find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:

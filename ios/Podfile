@@ -1,5 +1,5 @@
 # ===========================================
-#  Wonder Space Gallery - Final Podfile (v5)
+#  Wonder Space Gallery - Final Podfile (v6)
 #  ✅ Pass App Store Connect 100%
 # ===========================================
 
@@ -37,37 +37,35 @@ end
 # ===========================================
 post_install do |installer|
 
-  # 1️⃣ Disable signing & bundle ID for all Pods
+  # 1️⃣ Disable signing cho Pods, nhưng GIỮ Bundle ID hợp lệ
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
     target.build_configurations.each do |config|
       # 🚫 Không ký code cho Pods
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-#       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
       config.build_settings['DEVELOPMENT_TEAM'] = ''
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
 
-      # 🚫 Xóa và reset Bundle ID để tránh trùng app chính
-      config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
-      config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
+      # ✅ GIỮ Bundle ID riêng cho framework (theo tên target)
+      config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = "com.ctmd.wonderforge.wonderspace.gallery.#{target.name}"
 
-      # ⚙️ Fix warning iOS 17 / Swift
+      # ⚙️ Fix iOS 17 warning
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-
-      # ⚙️ Không embed Swift libs thừa
       config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
     end
   end
 
-  # 2️⃣ Dọn luôn project-level config của Pods (fix Apple strict check)
+  # 2️⃣ Dọn project-level config của Pods
   installer.pods_project.build_configurations.each do |config|
-    config.build_settings.delete('PRODUCT_BUNDLE_IDENTIFIER')
-    config.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = ''
+    config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+    config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
   end
 
-  # 3️⃣ Manual signing chỉ cho app chính (Runner)
+  # 3️⃣ Manual signing cho Runner chính
   installer.aggregate_targets.each do |aggregate_target|
     aggregate_target.user_project.native_targets.each do |target|
       next unless target.name == 'Runner'
@@ -82,5 +80,5 @@ post_install do |installer|
     end
   end
 
-  puts "✅ Post-install cleanup completed (No duplicate Bundle IDs, no pod signing)."
+  puts "✅ Post-install cleanup completed — valid Bundle IDs for all frameworks."
 end
