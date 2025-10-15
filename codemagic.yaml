@@ -68,6 +68,29 @@ workflows:
           EOF
           echo "✅ exportOptions.plist created."
 
+      - name: 🧩 Ensure iOS Scheme
+        script: |
+          set -e
+          echo "🔧 Ensuring Runner scheme is shared..."
+          cd ios
+          xcodebuild -list -workspace Runner.xcworkspace
+          xcodebuild -scheme Runner -showBuildSettings
+          cd ..
+
+      - name: 🛠️ Ensure Archive Action in Scheme
+        script: |
+          set -e
+          echo "🛠️ Ensuring ArchiveAction is enabled for Runner..."
+          SCHEME_PATH="ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme"
+          if [ -f "$SCHEME_PATH" ]; then
+            grep -q "<ArchiveAction" "$SCHEME_PATH" || \
+              sed -i '' '/<\/BuildActionEntries>/a\
+              <ArchiveAction buildConfiguration="Release" />' "$SCHEME_PATH"
+            echo "✅ ArchiveAction ensured."
+          else
+            echo "⚠️ Scheme file not found at $SCHEME_PATH"
+          fi
+
       - name: 🚀 Build iOS Release (Archive)
         script: |
           set -e
@@ -77,7 +100,7 @@ workflows:
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -destination "generic/platform=iOS" \
+            -destination 'generic/platform=iOS,name=Any iOS Device' \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
