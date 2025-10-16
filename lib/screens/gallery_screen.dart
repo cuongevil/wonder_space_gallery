@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:ui'; // 👈 Dành cho hiệu ứng mờ nền
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -251,6 +253,8 @@ class _GalleryCard extends StatefulWidget {
 class _GalleryCardState extends State<_GalleryCard>
     with SingleTickerProviderStateMixin {
   bool _isFavorite = false;
+  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
@@ -260,16 +264,69 @@ class _GalleryCardState extends State<_GalleryCard>
 
   Future<void> _syncFavorite() async {
     final prefs = await SharedPreferences.getInstance();
-    final fav = prefs.getStringList('favorites') ?? [];
-    setState(() => _isFavorite = fav.contains(widget.item.id));
+    final favLocal = prefs.getStringList('favorites_local') ?? [];
+
+    // Nếu đã đăng nhập -> merge Firestore + local
+    final user = _auth.currentUser;
+    if (user != null) {
+      final snapshot = await _firestore
+          .collection('favorites')
+          .doc(user.uid)
+          .collection('items')
+          .get();
+
+      final favOnline = snapshot.docs.map((d) => d.id).toList();
+      final merged = {...favLocal, ...favOnline}.toList();
+
+      await prefs.setStringList('favorites_local', merged);
+      _isFavorite = merged.contains(widget.item.id);
+    } else {
+      _isFavorite = favLocal.contains(widget.item.id);
+    }
+
+    if (mounted) setState(() {});
   }
 
   Future<void> _toggleFavorite() async {
     final prefs = await SharedPreferences.getInstance();
-    final fav = prefs.getStringList('favorites') ?? [];
+    List<String> favs = prefs.getStringList('favorites_local') ?? [];
+    final user = _auth.currentUser;
+
     setState(() => _isFavorite = !_isFavorite);
-    _isFavorite ? fav.add(widget.item.id) : fav.remove(widget.item.id);
-    await prefs.setStringList('favorites', fav);
+
+    if (_isFavorite) {
+      favs.add(widget.item.id);
+      if (user != null) {
+        await _firestore
+            .collection('favorites')
+            .doc(user.uid)
+            .collection('items')
+            .doc(widget.item.id)
+            .set({'createdAt': FieldValue.serverTimestamp()});
+      }
+    } else {
+      favs.remove(widget.item.id);
+      if (user != null) {
+        await _firestore
+            .collection('favorites')
+            .doc(user.uid)
+            .collection('items')
+            .doc(widget.item.id)
+            .delete();
+      }
+    }
+
+    await prefs.setStringList('favorites_local', favs);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _isFavorite
+              ? '💖 Đã lưu vào yêu thích!'
+              : '🗑️ Đã xóa khỏi yêu thích!',
+        ),
+      ),
+    );
   }
 
   @override
@@ -333,15 +390,15 @@ class _GalleryCardState extends State<_GalleryCard>
     );
   }
 
-  /// 💫 Popup chi tiết ảnh — slide + zoom + fade + blur động + vuốt đóng + bounce
+  /// 💫 Popup chi tiết ảnh — thêm đồng bộ giống FavoriteScreen
   Future<void> _showDetail(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-    var fav = prefs.getStringList('favorites') ?? [];
-    bool isFav = fav.contains(widget.item.id);
+    List<String> favs = prefs.getStringList('favorites_local') ?? [];
+    bool isFav = favs.contains(widget.item.id);
+    final user = _auth.currentUser;
 
     double dragOffset = 0.0;
     const double dragToCloseThreshold = 140;
-
     final bounceCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -379,129 +436,140 @@ class _GalleryCardState extends State<_GalleryCard>
         );
       },
       pageBuilder: (_, __, ___) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Stack(
-            children: [
-              AnimatedOpacity(
-                duration: const Duration(milliseconds: 100),
-                opacity: (1 - (dragOffset / 250)).clamp(0.2, 0.8),
-                child: Container(
-                  color: Colors.black.withOpacity(0.4),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: (8 - dragOffset / 30).clamp(0.0, 8.0),
-                      sigmaY: (8 - dragOffset / 30).clamp(0.0, 8.0),
-                    ),
-                    child: const SizedBox.expand(),
+        builder: (context, setDialogState) => Stack(
+          children: [
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 100),
+              opacity: (1 - (dragOffset / 250)).clamp(0.2, 0.8),
+              child: Container(
+                color: Colors.black.withOpacity(0.4),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: (8 - dragOffset / 30).clamp(0.0, 8.0),
+                    sigmaY: (8 - dragOffset / 30).clamp(0.0, 8.0),
                   ),
+                  child: const SizedBox.expand(),
                 ),
               ),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onVerticalDragUpdate: (details) {
-                  dragOffset += details.delta.dy;
-                  if (dragOffset > 0) setDialogState(() {});
-                },
-                onVerticalDragEnd: (_) async {
-                  if (dragOffset > dragToCloseThreshold) {
-                    Navigator.of(context).pop();
-                  } else if (dragOffset > 0) {
-                    final bounceAnim = Tween<double>(begin: dragOffset, end: 0)
-                        .animate(
-                          CurvedAnimation(
-                            parent: bounceCtrl,
-                            curve: Curves.elasticOut,
-                          ),
-                        );
-                    bounceCtrl.addListener(() {
-                      setDialogState(() {
-                        dragOffset = bounceAnim.value;
-                      });
-                    });
-                    await bounceCtrl.forward(from: 0);
-                  }
-                },
-                child: Opacity(
-                  opacity: (1 - (dragOffset / 300)).clamp(0.6, 1.0),
-                  child: Transform.translate(
-                    offset: Offset(0, dragOffset > 0 ? dragOffset * 0.5 : 0),
-                    child: Center(
-                      child: Dialog(
-                        insetPadding: const EdgeInsets.all(16),
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) {
+                dragOffset += details.delta.dy;
+                if (dragOffset > 0) setDialogState(() {});
+              },
+              onVerticalDragEnd: (_) async {
+                if (dragOffset > dragToCloseThreshold) {
+                  Navigator.of(context).pop();
+                } else if (dragOffset > 0) {
+                  final bounceAnim = Tween<double>(begin: dragOffset, end: 0)
+                      .animate(
+                        CurvedAnimation(
+                          parent: bounceCtrl,
+                          curve: Curves.elasticOut,
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            DialogHeader(title: widget.item.title),
-                            FutureBuilder<String>(
-                              future: resolveImage(widget.item.image),
-                              builder: (_, snap) => snap.hasData
-                                  ? CachedNetworkImage(imageUrl: snap.data!)
-                                  : const Padding(
-                                      padding: EdgeInsets.all(32),
-                                      child: CircularProgressIndicator(),
-                                    ),
-                            ),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.all(16),
-                                child: Text(
-                                  widget.item.prompt,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    color: AppTheme.inkSoft,
-                                    height: 1.6,
+                      );
+                  bounceCtrl.addListener(() {
+                    setDialogState(() => dragOffset = bounceAnim.value);
+                  });
+                  await bounceCtrl.forward(from: 0);
+                }
+              },
+              child: Opacity(
+                opacity: (1 - (dragOffset / 300)).clamp(0.6, 1.0),
+                child: Transform.translate(
+                  offset: Offset(0, dragOffset * 0.5),
+                  child: Center(
+                    child: Dialog(
+                      insetPadding: const EdgeInsets.all(16),
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          DialogHeader(title: widget.item.title),
+                          FutureBuilder<String>(
+                            future: resolveImage(widget.item.image),
+                            builder: (_, snap) => snap.hasData
+                                ? CachedNetworkImage(imageUrl: snap.data!)
+                                : const Padding(
+                                    padding: EdgeInsets.all(32),
+                                    child: CircularProgressIndicator(),
                                   ),
+                          ),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                widget.item.prompt,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  color: AppTheme.inkSoft,
+                                  height: 1.6,
                                 ),
                               ),
                             ),
-                            const Divider(height: 1, color: AppTheme.line),
-                            DialogActions(
-                              isFavorite: isFav,
-                              onCopy: () {
-                                Clipboard.setData(
-                                  ClipboardData(text: widget.item.prompt),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('✨ Đã sao chép!'),
-                                  ),
-                                );
-                              },
-                              onShare: () => Share.share(
-                                '${widget.item.title}\n\n${widget.item.prompt}',
-                              ),
-                              onToggleFavorite: () async {
-                                setDialogState(() => isFav = !isFav);
-                                setState(() => _isFavorite = isFav);
-                                isFav
-                                    ? fav.add(widget.item.id)
-                                    : fav.remove(widget.item.id);
-                                await prefs.setStringList('favorites', fav);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      isFav
-                                          ? '💖 Đã lưu vào yêu thích!'
-                                          : '🗑️ Đã xóa khỏi yêu thích!',
-                                    ),
-                                  ),
-                                );
-                              },
+                          ),
+                          const Divider(height: 1, color: AppTheme.line),
+                          DialogActions(
+                            isFavorite: isFav,
+                            onCopy: () {
+                              Clipboard.setData(
+                                ClipboardData(text: widget.item.prompt),
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('✨ Đã sao chép!')),
+                              );
+                            },
+                            onShare: () => Share.share(
+                              '${widget.item.title}\n\n${widget.item.prompt}',
                             ),
-                          ],
-                        ),
+                            onToggleFavorite: () async {
+                              setDialogState(() => isFav = !isFav);
+                              setState(() => _isFavorite = isFav);
+                              List<String> favList =
+                                  prefs.getStringList('favorites_local') ?? [];
+                              if (isFav) {
+                                favList.add(widget.item.id);
+                                if (user != null) {
+                                  await _firestore
+                                      .collection('favorites')
+                                      .doc(user.uid)
+                                      .collection('items')
+                                      .doc(widget.item.id)
+                                      .set({
+                                        'createdAt':
+                                            FieldValue.serverTimestamp(),
+                                      });
+                                }
+                              } else {
+                                favList.remove(widget.item.id);
+                                if (user != null) {
+                                  await _firestore
+                                      .collection('favorites')
+                                      .doc(user.uid)
+                                      .collection('items')
+                                      .doc(widget.item.id)
+                                      .delete();
+                                }
+                              }
+                              await prefs.setStringList(
+                                'favorites_local',
+                                favList,
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
               ),
-            ],
-          );
-        },
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -3,18 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/wonder_screen_wrapper.dart'; // 👈 Thêm dòng này
 
-class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+class SettingScreen extends StatefulWidget {
+  const SettingScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  State<SettingScreen> createState() => _SettingScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen>
+class _SettingScreenState extends State<SettingScreen>
     with TickerProviderStateMixin {
   String _version = '';
-  String _buildDate = '2025-10-16';
   User? _user;
   bool _loading = false;
 
@@ -71,17 +71,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() => _loading = true);
 
     try {
-      final googleSignIn = GoogleSignIn(
-        scopes: ['email'],
-        // Không truyền clientId cho Android
-      );
-
-      // Nếu user đang đăng nhập sẵn => signOut trước cho sạch
+      final googleSignIn = GoogleSignIn(scopes: ['email']);
       await googleSignIn.signOut();
 
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
-        // Người dùng hủy đăng nhập
         setState(() => _loading = false);
         return;
       }
@@ -92,9 +86,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         idToken: googleAuth.idToken,
       );
 
-      final userCred = await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
+      final userCred =
+      await FirebaseAuth.instance.signInWithCredential(credential);
       final user = userCred.user;
 
       setState(() {
@@ -110,16 +103,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
     } on FirebaseAuthException catch (e) {
       setState(() => _loading = false);
-      debugPrint("FirebaseAuthException: ${e.code} - ${e.message}");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('⚠️ FirebaseAuth lỗi: ${e.message}')),
       );
     } catch (e) {
       setState(() => _loading = false);
-      debugPrint("Google sign-in error: $e");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('⚠️ Lỗi đăng nhập: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('⚠️ Lỗi đăng nhập: $e')));
     }
   }
 
@@ -135,8 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _openPrivacyPolicy() async {
     final url = Uri.parse(
-      'https://sites.google.com/view/ctmd-wonderforge/home/wonderspace-gallery',
-    );
+        'https://sites.google.com/view/ctmd-wonderforge/home/wonderspace-gallery');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
@@ -166,41 +155,38 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ),
 
-        // 🌸 Nội dung chính
+        // 🌸 Nội dung chính — tự động canh lề tránh AppBar
         FadeTransition(
           opacity: _fadeAnim,
           child: SlideTransition(
             position: _slideAnim,
-            child: ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                const SizedBox(height: 10),
-                _buildHeader(),
-                const SizedBox(height: 24),
-
-                // --- Tài khoản ---
-                _buildSectionTitle('Tài khoản ☁️'),
-                _buildLoginCard(),
-                const SizedBox(height: 24),
-
-                // --- Hỗ trợ ---
-                _buildSectionTitle('Hỗ trợ 💬'),
-                _buildSettingCard(
-                  icon: Icons.privacy_tip_outlined,
-                  color: Colors.pinkAccent,
-                  title: 'Chính sách & Quyền riêng tư',
-                  subtitle:
-                      'Xem thông tin thu thập dữ liệu và điều khoản sử dụng.',
-                  onTap: _openPrivacyPolicy,
-                ),
-                _buildSettingCard(
-                  icon: Icons.email_outlined,
-                  color: Colors.orangeAccent,
-                  title: 'Góp ý & Báo lỗi',
-                  subtitle: 'Gửi phản hồi trực tiếp qua email.',
-                  onTap: _sendFeedback,
-                ),
-              ],
+            child: WonderScreenWrapper(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildHeader(),
+                  const SizedBox(height: 24),
+                  _buildSectionTitle('Tài khoản ☁️'),
+                  _buildLoginCard(),
+                  const SizedBox(height: 24),
+                  _buildSectionTitle('Hỗ trợ 💬'),
+                  _buildSettingCard(
+                    icon: Icons.privacy_tip_outlined,
+                    color: Colors.pinkAccent,
+                    title: 'Chính sách & Quyền riêng tư',
+                    subtitle:
+                    'Xem thông tin thu thập dữ liệu và điều khoản sử dụng.',
+                    onTap: _openPrivacyPolicy,
+                  ),
+                  _buildSettingCard(
+                    icon: Icons.email_outlined,
+                    color: Colors.orangeAccent,
+                    title: 'Góp ý & Báo lỗi',
+                    subtitle: 'Gửi phản hồi trực tiếp qua email.',
+                    onTap: _sendFeedback,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -230,9 +216,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.deepPurpleAccent.withOpacity(
-                  _glowAnim.value * 0.3,
-                ),
+                color:
+                Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.3),
                 blurRadius: 25 * _glowAnim.value,
                 spreadRadius: 2 * _glowAnim.value,
               ),
@@ -245,9 +230,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.purpleAccent.withOpacity(
-                        _glowAnim.value * 0.5,
-                      ),
+                      color: Colors.purpleAccent
+                          .withOpacity(_glowAnim.value * 0.5),
                       blurRadius: 20 * _glowAnim.value,
                       spreadRadius: 3 * _glowAnim.value,
                     ),
@@ -290,7 +274,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  // ☁️ Login card cải tiến
+  // ☁️ Login card
   Widget _buildLoginCard() {
     return Card(
       shape: RoundedRectangleBorder(
@@ -335,46 +319,46 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Expanded(
                   child: _user == null
                       ? const Text(
-                          'Đăng nhập bằng Google để lưu trữ và đồng bộ ảnh yêu thích của bạn ☁️',
-                          style: TextStyle(fontSize: 14, height: 1.4),
-                        )
+                    'Đăng nhập bằng Google để lưu trữ và đồng bộ ảnh yêu thích của bạn ☁️',
+                    style: TextStyle(fontSize: 14, height: 1.4),
+                  )
                       : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _user!.displayName ?? 'Người dùng',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              _user!.email ?? '',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Row(
-                              children: const [
-                                Icon(
-                                  Icons.verified_rounded,
-                                  color: Colors.green,
-                                  size: 18,
-                                ),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Đã đồng bộ tài khoản Google',
-                                  style: TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _user!.displayName ?? 'Người dùng',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
+                      ),
+                      Text(
+                        _user!.email ?? '',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: const [
+                          Icon(
+                            Icons.verified_rounded,
+                            color: Colors.green,
+                            size: 18,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Đã đồng bộ tài khoản Google',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

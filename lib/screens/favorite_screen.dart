@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11,7 +13,53 @@ import '../models/prompt_item.dart';
 import '../services/firebase_image_resolver.dart';
 import '../theme/app_theme.dart';
 
-/// 💖 Màn hình ảnh yêu thích (phiên bản content-only)
+/// 💾 Repository quản lý favorites (local + Firestore)
+class FavoriteRepository {
+  final _firestore = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  Future<List<String>> loadLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList('favorites_local') ?? [];
+  }
+
+  Future<void> saveLocal(List<String> favs) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('favorites_local', favs);
+  }
+
+  Future<List<String>> loadOnline() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return [];
+    final snapshot = await _firestore
+        .collection('favorites')
+        .doc(uid)
+        .collection('items')
+        .get();
+    return snapshot.docs.map((d) => d.id).toList();
+  }
+
+  Future<void> syncLocalToOnline(List<String> favs) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    final ref = _firestore.collection('favorites').doc(uid).collection('items');
+    for (final id in favs) {
+      await ref.doc(id).set({'createdAt': FieldValue.serverTimestamp()});
+    }
+  }
+
+  /// 🔹 Gộp dữ liệu khi đăng nhập
+  Future<List<String>> mergeFavorites() async {
+    final local = await loadLocal();
+    final online = await loadOnline();
+    final merged = {...local, ...online}.toList();
+    await saveLocal(merged);
+    await syncLocalToOnline(merged);
+    return merged;
+  }
+}
+
+/// 💖 Màn hình ảnh yêu thích có đồng bộ online/offline
 class FavoriteScreen extends StatefulWidget {
   const FavoriteScreen({super.key});
 
@@ -22,6 +70,7 @@ class FavoriteScreen extends StatefulWidget {
 class _FavoriteScreenState extends State<FavoriteScreen>
     with TickerProviderStateMixin {
   List<PromptItem> favorites = [];
+  final _repo = FavoriteRepository();
 
   @override
   void initState() {
@@ -29,36 +78,60 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     _loadFavorites();
   }
 
+  /// 🔄 Load favorites (ưu tiên online nếu đã login)
   Future<void> _loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
-    final favIds = prefs.getStringList('favorites') ?? [];
+    final user = FirebaseAuth.instance.currentUser;
+    List<String> favIds = [];
+
+    if (user != null) {
+      favIds = await _repo.mergeFavorites();
+    } else {
+      favIds = await _repo.loadLocal();
+    }
+
     final cachedJson = prefs.getString('prompts_cache');
     if (cachedJson == null) return;
+
     final data = jsonDecode(cachedJson) as Map<String, dynamic>;
     final allItems = ((data['items'] ?? []) as List)
         .map((e) => PromptItem.fromJson(e))
         .toList();
+
     setState(() {
       favorites = allItems.where((e) => favIds.contains(e.id)).toList();
     });
   }
 
+  /// ❌ Xóa khỏi yêu thích
   Future<void> _removeFavorite(String id) async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> favList = prefs.getStringList('favorites') ?? [];
-    favList.remove(id);
-    await prefs.setStringList('favorites', favList);
+    final user = FirebaseAuth.instance.currentUser;
+    List<String> local = await _repo.loadLocal();
+    local.remove(id);
+    await _repo.saveLocal(local);
+
+    if (user != null) {
+      await FirebaseFirestore.instance
+          .collection('favorites')
+          .doc(user.uid)
+          .collection('items')
+          .doc(id)
+          .delete();
+    }
+
     setState(() => favorites.removeWhere((e) => e.id == id));
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('💔 Đã xóa khỏi yêu thích')));
   }
 
-  /// 💫 Popup chi tiết ảnh có drag-to-close + hiệu ứng blur
+  /// 💫 Popup chi tiết ảnh có drag-to-close + blur
   void _showFavoriteDetail(BuildContext context, PromptItem item) async {
     final prefs = await SharedPreferences.getInstance();
-    List<String> favList = prefs.getStringList('favorites') ?? [];
+    final user = FirebaseAuth.instance.currentUser;
+    List<String> favList = await _repo.loadLocal();
     bool isFavorite = favList.contains(item.id);
+
     double dragOffset = 0.0;
     const double dragToCloseThreshold = 140;
     final bounceCtrl = AnimationController(
@@ -82,7 +155,6 @@ class _FavoriteScreenState extends State<FavoriteScreen>
           begin: 0.97,
           end: 1.0,
         ).chain(CurveTween(curve: Curves.easeOutBack));
-
         return FadeTransition(
           opacity: fade,
           child: SlideTransition(
@@ -94,7 +166,6 @@ class _FavoriteScreenState extends State<FavoriteScreen>
       pageBuilder: (_, __, ___) => StatefulBuilder(
         builder: (context, setDialogState) => Stack(
           children: [
-            // 🌫️ Nền blur động
             AnimatedOpacity(
               duration: const Duration(milliseconds: 120),
               opacity: (1 - (dragOffset / 250)).clamp(0.2, 0.8),
@@ -189,6 +260,7 @@ class _FavoriteScreenState extends State<FavoriteScreen>
                                 ],
                               ),
                             ),
+
                             // Ảnh
                             FutureBuilder<String>(
                               future: resolveImage(item.image),
@@ -202,6 +274,7 @@ class _FavoriteScreenState extends State<FavoriteScreen>
                                       child: CircularProgressIndicator(),
                                     ),
                             ),
+
                             // Prompt mô tả
                             Expanded(
                               child: SingleChildScrollView(
@@ -217,6 +290,7 @@ class _FavoriteScreenState extends State<FavoriteScreen>
                               ),
                             ),
                             const Divider(height: 1, color: AppTheme.line),
+
                             // Nút hành động
                             Padding(
                               padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -278,10 +352,12 @@ class _FavoriteScreenState extends State<FavoriteScreen>
                                         Navigator.pop(context);
                                       } else {
                                         favList.add(item.id);
-                                        await prefs.setStringList(
-                                          'favorites',
-                                          favList,
-                                        );
+                                        await _repo.saveLocal(favList);
+                                        if (user != null) {
+                                          await _repo.syncLocalToOnline(
+                                            favList,
+                                          );
+                                        }
                                       }
                                     },
                                   ),
@@ -302,7 +378,7 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     );
   }
 
-  /// 🧩 Nội dung chính (content-only, không Scaffold)
+  /// 🧩 Nội dung chính
   @override
   Widget build(BuildContext context) {
     if (favorites.isEmpty) {
