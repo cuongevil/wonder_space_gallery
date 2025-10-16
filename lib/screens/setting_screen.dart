@@ -47,8 +47,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat(reverse: true);
-    _glowAnim = Tween<double>(begin: 0.4, end: 0.9)
-        .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+    _glowAnim = Tween<double>(
+      begin: 0.4,
+      end: 0.9,
+    ).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -66,11 +68,20 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _loginWithGoogle() async {
+    setState(() => _loading = true);
+
     try {
-      setState(() => _loading = true);
-      final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email']);
+      final googleSignIn = GoogleSignIn(
+        scopes: ['email'],
+        // Không truyền clientId cho Android
+      );
+
+      // Nếu user đang đăng nhập sẵn => signOut trước cho sạch
+      await googleSignIn.signOut();
+
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
+        // Người dùng hủy đăng nhập
         setState(() => _loading = false);
         return;
       }
@@ -81,25 +92,34 @@ class _SettingsScreenState extends State<SettingsScreen>
         idToken: googleAuth.idToken,
       );
 
-      final userCred =
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCred = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
+      final user = userCred.user;
 
       setState(() {
-        _user = userCred.user;
+        _user = user;
         _loading = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🌈 Xin chào ${_user?.displayName ?? "bạn"}!'),
+          content: Text('🌈 Xin chào ${user?.displayName ?? "bạn"}!'),
           backgroundColor: Colors.deepPurpleAccent.withOpacity(0.9),
         ),
       );
+    } on FirebaseAuthException catch (e) {
+      setState(() => _loading = false);
+      debugPrint("FirebaseAuthException: ${e.code} - ${e.message}");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚠️ FirebaseAuth lỗi: ${e.message}')),
+      );
     } catch (e) {
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi đăng nhập: $e')),
-      );
+      debugPrint("Google sign-in error: $e");
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('⚠️ Lỗi đăng nhập: $e')));
     }
   }
 
@@ -170,7 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   color: Colors.pinkAccent,
                   title: 'Chính sách & Quyền riêng tư',
                   subtitle:
-                  'Xem thông tin thu thập dữ liệu và điều khoản sử dụng.',
+                      'Xem thông tin thu thập dữ liệu và điều khoản sử dụng.',
                   onTap: _openPrivacyPolicy,
                 ),
                 _buildSettingCard(
@@ -210,8 +230,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color:
-                Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.3),
+                color: Colors.deepPurpleAccent.withOpacity(
+                  _glowAnim.value * 0.3,
+                ),
                 blurRadius: 25 * _glowAnim.value,
                 spreadRadius: 2 * _glowAnim.value,
               ),
@@ -224,8 +245,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color:
-                      Colors.purpleAccent.withOpacity(_glowAnim.value * 0.5),
+                      color: Colors.purpleAccent.withOpacity(
+                        _glowAnim.value * 0.5,
+                      ),
                       blurRadius: 20 * _glowAnim.value,
                       spreadRadius: 3 * _glowAnim.value,
                     ),
@@ -256,8 +278,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       _user != null
                           ? 'Cảm ơn bạn đã ghé Wonder Space 💫'
                           : 'Đăng nhập để đồng bộ ảnh yêu thích nhé!',
-                      style:
-                      const TextStyle(fontSize: 13, color: Colors.grey),
+                      style: const TextStyle(fontSize: 13, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -304,48 +325,56 @@ class _SettingsScreenState extends State<SettingsScreen>
                     ],
                   ),
                   padding: const EdgeInsets.all(8),
-                  child: const Icon(Icons.cloud_outlined,
-                      color: Colors.deepPurple, size: 28),
+                  child: const Icon(
+                    Icons.cloud_outlined,
+                    color: Colors.deepPurple,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _user == null
                       ? const Text(
-                    'Đăng nhập bằng Google để lưu trữ và đồng bộ ảnh yêu thích của bạn ☁️',
-                    style: TextStyle(fontSize: 14, height: 1.4),
-                  )
+                          'Đăng nhập bằng Google để lưu trữ và đồng bộ ảnh yêu thích của bạn ☁️',
+                          style: TextStyle(fontSize: 14, height: 1.4),
+                        )
                       : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _user!.displayName ?? 'Người dùng',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _user!.displayName ?? 'Người dùng',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              _user!.email ?? '',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: const [
+                                Icon(
+                                  Icons.verified_rounded,
+                                  color: Colors.green,
+                                  size: 18,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Đã đồng bộ tài khoản Google',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                      Text(
-                        _user!.email ?? '',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: const [
-                          Icon(Icons.verified_rounded,
-                              color: Colors.green, size: 18),
-                          SizedBox(width: 6),
-                          Text(
-                            'Đã đồng bộ tài khoản Google',
-                            style: TextStyle(
-                                color: Colors.green, fontSize: 13),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
                 ),
               ],
             ),
@@ -357,12 +386,13 @@ class _SettingsScreenState extends State<SettingsScreen>
                   _user == null ? Icons.login_rounded : Icons.logout_rounded,
                   size: 18,
                 ),
-                label: Text(
-                    _user == null ? 'Đăng nhập Google' : 'Đăng xuất'),
+                label: Text(_user == null ? 'Đăng nhập Google' : 'Đăng xuất'),
                 onPressed: _user == null ? _loginWithGoogle : _logout,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 10),
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                   backgroundColor: Colors.deepPurple,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
