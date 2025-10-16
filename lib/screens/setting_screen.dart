@@ -12,17 +12,50 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   String _version = '';
   String _buildDate = '2025-10-16';
   User? _user;
   bool _loading = false;
+
+  late final AnimationController _fadeCtrl;
+  late final AnimationController _glowCtrl;
+  late final Animation<double> _fadeAnim;
+  late final Animation<Offset> _slideAnim;
+  late final Animation<double> _glowAnim;
 
   @override
   void initState() {
     super.initState();
     _loadAppInfo();
     _user = FirebaseAuth.instance.currentUser;
+
+    // Animation fade-in
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.05),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOutCubic));
+    _fadeCtrl.forward();
+
+    // 🌈 Glow động quanh avatar
+    _glowCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+    _glowAnim = Tween<double>(begin: 0.4, end: 0.9)
+        .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _fadeCtrl.dispose();
+    _glowCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAppInfo() async {
@@ -35,7 +68,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _loginWithGoogle() async {
     try {
       setState(() => _loading = true);
-
       final GoogleSignIn googleSignIn = GoogleSignIn(scopes: ['email']);
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
@@ -99,25 +131,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     await launchUrl(emailLaunchUri);
   }
 
-  Future<void> _openCommunity() async {
-    final url = Uri.parse('https://www.facebook.com/ctmd.wonderforge');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  Future<void> _openPlayStore() async {
-    final url = Uri.parse('https://play.google.com/store/apps/details?id=com.ctmd.wonderforge.wonderspace.gallery');
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // 🌈 Nền gradient mềm
+        // 🌈 Nền pastel gradient
         Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -128,80 +146,43 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         ),
 
-        // Nội dung chính
-        ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            const SizedBox(height: 10),
-            _buildHeader(),
-            const SizedBox(height: 24),
+        // 🌸 Nội dung chính
+        FadeTransition(
+          opacity: _fadeAnim,
+          child: SlideTransition(
+            position: _slideAnim,
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                const SizedBox(height: 10),
+                _buildHeader(),
+                const SizedBox(height: 24),
 
-            // --- Tài khoản ---
-            const Text('Tài khoản ☁️',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            _buildLoginCard(),
+                // --- Tài khoản ---
+                _buildSectionTitle('Tài khoản ☁️'),
+                _buildLoginCard(),
+                const SizedBox(height: 24),
 
-            const SizedBox(height: 24),
-
-            // --- Ứng dụng ---
-            const Text('Ứng dụng 📱',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            _buildSettingCard(
-              icon: Icons.privacy_tip_outlined,
-              color: Colors.pinkAccent,
-              title: 'Chính sách & Quyền riêng tư',
-              subtitle: 'Xem thông tin thu thập dữ liệu và điều khoản sử dụng.',
-              onTap: _openPrivacyPolicy,
-            ),
-            _buildSettingCard(
-              icon: Icons.info_outline,
-              color: Colors.blueAccent,
-              title: 'Phiên bản ứng dụng',
-              subtitle: '$_version  •  Build: $_buildDate',
-            ),
-            _buildSettingCard(
-              icon: Icons.star_border_rounded,
-              color: Colors.amber,
-              title: 'Đánh giá ứng dụng',
-              subtitle: 'Giúp Wonder Space tốt hơn bằng cách đánh giá 5⭐ nhé!',
-              onTap: _openPlayStore,
-            ),
-
-            const SizedBox(height: 24),
-
-            // --- Hỗ trợ ---
-            const Text('Hỗ trợ 💬',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 10),
-            _buildSettingCard(
-              icon: Icons.email_outlined,
-              color: Colors.orangeAccent,
-              title: 'Góp ý & Báo lỗi',
-              subtitle: 'Gửi phản hồi trực tiếp qua email.',
-              onTap: _sendFeedback,
-            ),
-            _buildSettingCard(
-              icon: Icons.group_outlined,
-              color: Colors.teal,
-              title: 'Cộng đồng Wonder Space',
-              subtitle: 'Tham gia để chia sẻ ảnh & ý tưởng sáng tạo!',
-              onTap: _openCommunity,
-            ),
-
-            const SizedBox(height: 40),
-            const Center(
-              child: Text(
-                'Wonder Space Gallery 💫',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
+                // --- Hỗ trợ ---
+                _buildSectionTitle('Hỗ trợ 💬'),
+                _buildSettingCard(
+                  icon: Icons.privacy_tip_outlined,
+                  color: Colors.pinkAccent,
+                  title: 'Chính sách & Quyền riêng tư',
+                  subtitle:
+                  'Xem thông tin thu thập dữ liệu và điều khoản sử dụng.',
+                  onTap: _openPrivacyPolicy,
                 ),
-              ),
+                _buildSettingCard(
+                  icon: Icons.email_outlined,
+                  color: Colors.orangeAccent,
+                  title: 'Góp ý & Báo lỗi',
+                  subtitle: 'Gửi phản hồi trực tiếp qua email.',
+                  onTap: _sendFeedback,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
 
         if (_loading)
@@ -213,124 +194,201 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  // 🌤️ Header với gradient + avatar
+  // 🌤️ Header với glow động quanh avatar
   Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE8DFFF), Color(0xFFFFF5E1)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.purple.withOpacity(0.08),
-            blurRadius: 10,
-            spreadRadius: 2,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.purpleAccent.withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                ),
-              ],
+    return AnimatedBuilder(
+      animation: _glowAnim,
+      builder: (context, _) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE8DFFF), Color(0xFFFFF5E1)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: CircleAvatar(
-              radius: 30,
-              backgroundImage: _user?.photoURL != null
-                  ? NetworkImage(_user!.photoURL!)
-                  : const AssetImage('assets/logo.png') as ImageProvider,
-            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color:
+                Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.3),
+                blurRadius: 25 * _glowAnim.value,
+                spreadRadius: 2 * _glowAnim.value,
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _user != null
-                      ? 'Chào ${_user!.displayName?.split(" ").first ?? "bạn"} 👋'
-                      : 'Xin chào bạn 👋',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color:
+                      Colors.purpleAccent.withOpacity(_glowAnim.value * 0.5),
+                      blurRadius: 20 * _glowAnim.value,
+                      spreadRadius: 3 * _glowAnim.value,
+                    ),
+                  ],
                 ),
-                Text(
-                  _user != null
-                      ? 'Cảm ơn bạn đã ghé Wonder Space 💫'
-                      : 'Đăng nhập để đồng bộ ảnh yêu thích nhé!',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                child: CircleAvatar(
+                  radius: 30,
+                  backgroundImage: _user?.photoURL != null
+                      ? NetworkImage(_user!.photoURL!)
+                      : const AssetImage('assets/logo.png') as ImageProvider,
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _user != null
+                          ? 'Chào ${_user!.displayName?.split(" ").first ?? "bạn"} 👋'
+                          : 'Xin chào bạn 👋',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    Text(
+                      _user != null
+                          ? 'Cảm ơn bạn đã ghé Wonder Space 💫'
+                          : 'Đăng nhập để đồng bộ ảnh yêu thích nhé!',
+                      style:
+                      const TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
+  // ☁️ Login card cải tiến
   Widget _buildLoginCard() {
     return Card(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.purple.withOpacity(0.08)),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.deepPurple.withOpacity(0.1)),
       ),
       elevation: 1.5,
-      shadowColor: Colors.purple.withOpacity(0.1),
+      shadowColor: Colors.purple.withOpacity(0.08),
       color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.cloud_outlined, color: Colors.deepPurple),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _user == null
-                  ? const Text(
-                'Đăng nhập bằng Google để lưu danh sách yêu thích.',
-              )
-                  : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _user!.displayName ?? 'Người dùng',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFE8DFFF), Color(0xFFFFF5E1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.deepPurple.withOpacity(0.1),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
-                  Text(
-                    _user!.email ?? '',
-                    style:
-                    const TextStyle(fontSize: 13, color: Colors.grey),
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(Icons.cloud_outlined,
+                      color: Colors.deepPurple, size: 28),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _user == null
+                      ? const Text(
+                    'Đăng nhập bằng Google để lưu trữ và đồng bộ ảnh yêu thích của bạn ☁️',
+                    style: TextStyle(fontSize: 14, height: 1.4),
+                  )
+                      : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _user!.displayName ?? 'Người dùng',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        _user!.email ?? '',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: const [
+                          Icon(Icons.verified_rounded,
+                              color: Colors.green, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Đã đồng bộ tài khoản Google',
+                            style: TextStyle(
+                                color: Colors.green, fontSize: 13),
+                          ),
+                        ],
+                      )
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            ElevatedButton(
-              onPressed: _user == null ? _loginWithGoogle : _logout,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 18),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                icon: Icon(
+                  _user == null ? Icons.login_rounded : Icons.logout_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                    _user == null ? 'Đăng nhập Google' : 'Đăng xuất'),
+                onPressed: _user == null ? _loginWithGoogle : _logout,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 10),
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
                 ),
               ),
-              child: Text(_user == null ? 'Đăng nhập' : 'Đăng xuất'),
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildSectionTitle(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontWeight: FontWeight.bold,
+        fontSize: 16,
+        color: Colors.black87,
+      ),
+    ),
+  );
 
   Widget _buildSettingCard({
     required IconData icon,
