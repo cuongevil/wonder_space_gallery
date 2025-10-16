@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wonderspace.gallery/screens/setting_screen.dart';
 
 import '../theme/app_theme.dart';
 import 'favorite_screen.dart';
@@ -19,7 +20,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _screens = const [
     GalleryScreen(),
     FavoriteScreen(),
-    _SettingsScreen(),
+    SettingsScreen(),
   ];
 
   final List<String> _titles = const [
@@ -67,21 +68,6 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// ⚙️ Màn hình Settings placeholder
-class _SettingsScreen extends StatelessWidget {
-  const _SettingsScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        '⚙️ Cài đặt đang phát triển...',
-        style: TextStyle(color: AppTheme.inkSoft),
       ),
     );
   }
