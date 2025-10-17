@@ -22,16 +22,11 @@ import 'widgets/dialog_actions.dart';
 import 'widgets/dialog_header.dart';
 import 'widgets/empty_state.dart';
 
-/// 💎 GalleryScreen — đồng bộ gradient & hiệu ứng kính với MainScreen
+/// 💎 GalleryScreen — gradient tĩnh, đồng bộ với MainScreen
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<ScrollDirection>? onScrollDirectionChanged;
-  final bool gradientPhase;
 
-  const GalleryScreen({
-    super.key,
-    this.onScrollDirectionChanged,
-    this.gradientPhase = false,
-  });
+  const GalleryScreen({super.key, this.onScrollDirectionChanged});
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -185,26 +180,18 @@ class _GalleryScreenState extends State<GalleryScreen>
       scrollable: false,
       child: Stack(
         children: [
-          // 💫 Nền trong suốt đồng bộ với gradient của MainScreen
+          // 🌈 Gradient tĩnh đồng bộ toàn app
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: widget.gradientPhase
-                    ? [
-                  const Color(0xFF5E2CED).withOpacity(0.12),
-                  const Color(0xFFFF8B00).withOpacity(0.12)
-                ]
-                    : [
-                  const Color(0xFFA58CFF).withOpacity(0.12),
-                  const Color(0xFFFFC480).withOpacity(0.12)
-                ],
+                colors: [Color(0xFFA58CFF), Color(0xFFFFC480)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
           ),
 
-          // 🌟 Nội dung chính
+          // 🌸 Nội dung chính
           SafeArea(
             top: false,
             bottom: true,
@@ -220,7 +207,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                       padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
                           color: Colors.white.withOpacity(0.4),
@@ -230,7 +217,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                       child: Row(
                         children: [
                           const Icon(Icons.search_rounded,
-                              color: Colors.white70),
+                              color: Colors.white, size: 22),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
@@ -241,7 +228,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                               decoration: InputDecoration(
                                 hintText: 'Tìm kiếm $randomHint...',
                                 hintStyle: TextStyle(
-                                    color: Colors.white.withOpacity(0.6)),
+                                    color: Colors.white.withOpacity(0.85)),
                                 border: InputBorder.none,
                               ),
                             ),
@@ -283,8 +270,8 @@ class _GalleryScreenState extends State<GalleryScreen>
                               const Padding(
                                 padding: EdgeInsets.all(20),
                                 child: Center(
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2)),
+                                    child:
+                                    CircularProgressIndicator(strokeWidth: 2)),
                               ),
                           ],
                         ),
@@ -295,36 +282,13 @@ class _GalleryScreenState extends State<GalleryScreen>
               ],
             ),
           ),
-
-          // ✨ Blend layer — làm mờ chuyển giữa body và nav bar
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 80,
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.05),
-                      Colors.black.withOpacity(0.1),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-/// 🧩 Grid ảnh có hiệu ứng mờ & ánh sáng tím
+/// 🧩 Grid ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
   const _GalleryGrid({required this.items});
@@ -364,8 +328,8 @@ class _GalleryCardState extends State<_GalleryCard>
   void initState() {
     super.initState();
     _syncFavorite();
-    _heartCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _heartCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 400));
   }
 
   @override
@@ -498,7 +462,8 @@ class _GalleryCardState extends State<_GalleryCard>
                       _isFavorite
                           ? Icons.favorite_rounded
                           : Icons.favorite_border_rounded,
-                      color: _isFavorite ? Colors.pinkAccent : Colors.white70,
+                      color:
+                      _isFavorite ? Colors.pinkAccent : Colors.white70,
                       size: 26,
                     ),
                   ),

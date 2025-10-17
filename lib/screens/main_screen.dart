@@ -46,7 +46,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
     _iconCtrls[_currentIndex].forward();
 
-    // 🌈 Gradient phase auto change
+    // 🌈 Gradient phase auto change (animation chuyển màu)
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 4));
       if (!mounted) return false;
@@ -88,10 +88,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      GalleryScreen(
-        onScrollDirectionChanged: _onScrollDirection,
-        gradientPhase: _phase,
-      ),
+      GalleryScreen(onScrollDirectionChanged: _onScrollDirection),
       const FavoriteScreen(),
       const SettingScreen(),
     ];
@@ -124,7 +121,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       ),
 
-      // 🌈 Floating Gradient NavBar — cùng phase màu với Gallery
+      // 🌈 Floating Gradient NavBar — cùng phase màu với nền
       bottomNavigationBar: SizeTransition(
         sizeFactor: _fadeAnim,
         axisAlignment: -1.0,
