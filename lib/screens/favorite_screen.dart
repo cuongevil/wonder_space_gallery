@@ -385,6 +385,7 @@ class _FavoriteCard extends StatelessWidget {
 }
 
 // ✨ Reusable Glass Button
+// ✨ Reusable Glass Button — hiển thị gradient đúng cách
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -403,37 +404,72 @@ class _GlassButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          gradient: gradient,
-          color: gradient == null
-              ? Colors.white.withOpacity(0.15)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
+          gradient: gradient ??
+              const LinearGradient(
+                colors: [
+                  Color(0x33FFFFFF),
+                  Color(0x11FFFFFF),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.deepPurple.withOpacity(0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
+              color: Colors.deepPurple.withOpacity(0.15),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (Rect bounds) {
+                      return const LinearGradient(
+                        colors: [Color(0xFFFFFFFF), Color(0xFFFFF0D0)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(bounds);
+                    },
+                    child: Icon(icon, size: 18),
+                  ),
+                  const SizedBox(width: 6),
+                  ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (Rect bounds) {
+                      return const LinearGradient(
+                        colors: [Colors.white, Color(0xFFFFE1A0)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(bounds);
+                    },
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
+
