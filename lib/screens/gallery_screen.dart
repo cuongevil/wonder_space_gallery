@@ -1,3 +1,4 @@
+// 💎 GalleryScreen — nền trong suốt, dùng gradient của MainScreen
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -22,7 +23,6 @@ import 'widgets/dialog_actions.dart';
 import 'widgets/dialog_header.dart';
 import 'widgets/empty_state.dart';
 
-/// 💎 GalleryScreen — gradient tĩnh, đồng bộ với MainScreen
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<ScrollDirection>? onScrollDirectionChanged;
 
@@ -180,15 +180,9 @@ class _GalleryScreenState extends State<GalleryScreen>
       scrollable: false,
       child: Stack(
         children: [
-          // 🌈 Gradient tĩnh đồng bộ toàn app
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFA58CFF), Color(0xFFFFC480)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
+          // 🪟 Nền trong suốt — lộ gradient của MainScreen
+          Positioned.fill(
+            child: Container(color: Colors.transparent),
           ),
 
           // 🌸 Nội dung chính
@@ -308,7 +302,7 @@ class _GalleryGrid extends StatelessWidget {
   );
 }
 
-/// ❤️ Card ảnh với hiệu ứng glow & glass
+/// ❤️ Card ảnh
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   const _GalleryCard({required this.item});
@@ -328,8 +322,8 @@ class _GalleryCardState extends State<_GalleryCard>
   void initState() {
     super.initState();
     _syncFavorite();
-    _heartCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 400));
+    _heartCtrl =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
   }
 
   @override
