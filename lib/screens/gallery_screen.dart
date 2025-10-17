@@ -210,28 +210,6 @@ class _GalleryScreenState extends State<GalleryScreen>
             bottom: true,
             child: Column(
               children: [
-                // Header + search
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text(
-                        'Xin chào, Cường 👋',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.white30,
-                        backgroundImage: AssetImage('assets/avatar.png'),
-                      ),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
