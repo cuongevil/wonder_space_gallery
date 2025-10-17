@@ -6,9 +6,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/wonder_screen_wrapper.dart';
 
+/// ⚙️ SettingScreen — hiển thị glass trong suốt, đồng bộ gradient với MainScreen
 class SettingScreen extends StatefulWidget {
-  final bool gradientPhase;
-  const SettingScreen({super.key, this.gradientPhase = false});
+  const SettingScreen({super.key});
 
   @override
   State<SettingScreen> createState() => _SettingScreenState();
@@ -33,16 +33,22 @@ class _SettingScreenState extends State<SettingScreen>
     _loadAppInfo();
     _user = FirebaseAuth.instance.currentUser;
 
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..forward();
+    _fadeCtrl =
+    AnimationController(vsync: this, duration: const Duration(milliseconds: 800))
+      ..forward();
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.05), end: Offset.zero)
         .animate(CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOutCubic));
 
-    _glowCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat(reverse: true);
-    _glowAnim = Tween<double>(begin: 0.4, end: 0.9).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+    _glowCtrl =
+    AnimationController(vsync: this, duration: const Duration(seconds: 3))
+      ..repeat(reverse: true);
+    _glowAnim = Tween<double>(begin: 0.4, end: 0.9)
+        .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
 
-    // 🌈 Ánh sáng shimmer quét nhẹ trên nền gradient
-    _shimmerCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 8))..repeat();
+    _shimmerCtrl =
+    AnimationController(vsync: this, duration: const Duration(seconds: 8))
+      ..repeat();
   }
 
   @override
@@ -118,7 +124,7 @@ class _SettingScreenState extends State<SettingScreen>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // 🌈 Gradient + shimmer ánh sáng động
+        // 🌈 Nền trong suốt + shimmer ánh sáng nhẹ (trên gradient của MainScreen)
         AnimatedBuilder(
           animation: _shimmerCtrl,
           builder: (context, _) {
@@ -126,35 +132,26 @@ class _SettingScreenState extends State<SettingScreen>
             return ShaderMask(
               shaderCallback: (rect) => LinearGradient(
                 colors: [
-                  Colors.white.withOpacity(0.2),
+                  Colors.white.withOpacity(0.25),
                   Colors.white.withOpacity(0.05),
-                  Colors.white.withOpacity(0.2)
+                  Colors.white.withOpacity(0.25),
                 ],
                 begin: Alignment(-1.0 + dx, -1.0),
                 end: Alignment(1.0 + dx, 1.0),
               ).createShader(rect),
               blendMode: BlendMode.srcOver,
-              child: AnimatedContainer(
-                duration: const Duration(seconds: 4),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: widget.gradientPhase
-                        ? [const Color(0xFF5E2CED), const Color(0xFFFF8B00)]
-                        : [const Color(0xFFA58CFF), const Color(0xFFFFC480)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-              ),
+              child: Container(color: Colors.transparent),
             );
           },
         ),
 
+        // 💫 Blur nhẹ trên toàn màn
         BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(color: Colors.white.withOpacity(0.08)),
         ),
 
+        // 🌸 Nội dung chính
         FadeTransition(
           opacity: _fadeAnim,
           child: SlideTransition(
@@ -228,8 +225,8 @@ class _SettingScreenState extends State<SettingScreen>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.deepPurpleAccent
-                      .withOpacity(_glowAnim.value * 0.5),
+                  color:
+                  Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.5),
                   blurRadius: 28 * _glowAnim.value,
                   spreadRadius: 2 * _glowAnim.value,
                 ),
@@ -352,9 +349,9 @@ class _SettingScreenState extends State<SettingScreen>
                   ),
                 ],
               ),
-              child: const Text(
-                'Đăng nhập Google',
-                style: TextStyle(
+              child: Text(
+                _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
+                style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.3),
@@ -372,9 +369,7 @@ class _SettingScreenState extends State<SettingScreen>
       leading: Icon(icon, color: Colors.white.withOpacity(0.9)),
       title: Text(title,
           style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 15)),
+              color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
       subtitle: Text(subtitle,
           style:
           TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
