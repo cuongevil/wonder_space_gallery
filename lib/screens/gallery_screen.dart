@@ -1,4 +1,4 @@
-// 💎 GalleryScreen — nền trong suốt, dùng gradient của MainScreen
+// 💎 GalleryScreen — TPBank Mobile 2025 (Glass + Gradient + Hero Dialog)
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -19,8 +19,6 @@ import '../services/app_open_ad_manager.dart';
 import '../services/firebase_image_resolver.dart';
 import '../theme/app_theme.dart';
 import '../widgets/wonder_screen_wrapper.dart';
-import 'widgets/dialog_actions.dart';
-import 'widgets/dialog_header.dart';
 import 'widgets/empty_state.dart';
 
 class GalleryScreen extends StatefulWidget {
@@ -49,7 +47,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   late final Animation<double> _fadeAnim;
   late final Animation<double> _scaleAnim;
 
-  final List<String> _searchHints = [
+  final List<String> _searchHints = const [
     'Giáng Sinh pastel',
     'Bé gái Việt Nam',
     'Chân dung điện ảnh',
@@ -97,9 +95,8 @@ class _GalleryScreenState extends State<GalleryScreen>
       final ref = FirebaseStorage.instance.ref('prompts/prompts_trending.json');
       final meta = await ref.getMetadata();
       final remoteUpdated = meta.updated?.toIso8601String() ?? '';
-      final shouldReload = forceRefresh ||
-          cachedJson == null ||
-          prefs.getString('prompts_meta') != remoteUpdated;
+      final shouldReload =
+          forceRefresh || cachedJson == null || prefs.getString('prompts_meta') != remoteUpdated;
 
       if (shouldReload) {
         final url = await ref.getDownloadURL();
@@ -125,8 +122,7 @@ class _GalleryScreenState extends State<GalleryScreen>
 
   void _parseData(Map<String, dynamic> data) {
     final items =
-        (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ??
-            [];
+        (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ?? [];
     items.sort((a, b) => b.id.compareTo(a.id));
     _all = items;
     _visible = _all.take(_batchSize).toList();
@@ -173,17 +169,14 @@ class _GalleryScreenState extends State<GalleryScreen>
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text(_error!));
-
     final randomHint = _searchHints[Random().nextInt(_searchHints.length)];
 
     return WonderScreenWrapper(
       scrollable: false,
       child: Stack(
         children: [
-          // 🪟 Nền trong suốt — lộ gradient của MainScreen
-          Positioned.fill(
-            child: Container(color: Colors.transparent),
-          ),
+          // 💎 Nền trong suốt — lộ gradient từ MainScreen
+          Positioned.fill(child: Container(color: Colors.transparent)),
 
           // 🌸 Nội dung chính
           SafeArea(
@@ -198,8 +191,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                     filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 20),
-                      padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(24),
@@ -217,12 +209,12 @@ class _GalleryScreenState extends State<GalleryScreen>
                             child: TextField(
                               controller: _searchCtrl,
                               onChanged: (_) => _applyFilters(),
-                              style: const TextStyle(
-                                  fontSize: 15, color: Colors.white),
+                              style:
+                              const TextStyle(fontSize: 15, color: Colors.white),
                               decoration: InputDecoration(
                                 hintText: 'Tìm kiếm $randomHint...',
-                                hintStyle: TextStyle(
-                                    color: Colors.white.withOpacity(0.85)),
+                                hintStyle:
+                                TextStyle(color: Colors.white.withOpacity(0.85)),
                                 border: InputBorder.none,
                               ),
                             ),
@@ -243,7 +235,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                 ),
                 const SizedBox(height: 16),
 
-                // Grid hiển thị ảnh
+                // 🖼 Grid ảnh
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () => _loadTrending(forceRefresh: true),
@@ -264,8 +256,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                               const Padding(
                                 padding: EdgeInsets.all(20),
                                 child: Center(
-                                    child:
-                                    CircularProgressIndicator(strokeWidth: 2)),
+                                    child: CircularProgressIndicator(strokeWidth: 2)),
                               ),
                           ],
                         ),
@@ -282,7 +273,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 }
 
-/// 🧩 Grid ảnh
+// 🧩 Grid hiển thị ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
   const _GalleryGrid({required this.items});
@@ -302,7 +293,7 @@ class _GalleryGrid extends StatelessWidget {
   );
 }
 
-/// ❤️ Card ảnh
+// ❤️ Card ảnh
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   const _GalleryCard({required this.item});
@@ -433,10 +424,7 @@ class _GalleryCardState extends State<_GalleryCard>
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.35)
-                      ],
+                      colors: [Colors.transparent, Colors.black.withOpacity(0.35)],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -447,26 +435,23 @@ class _GalleryCardState extends State<_GalleryCard>
                 top: 8,
                 right: 8,
                 child: ScaleTransition(
-                  scale: Tween(begin: 1.0, end: 1.3)
-                      .animate(CurvedAnimation(
-                      parent: _heartCtrl, curve: Curves.elasticOut)),
+                  scale: Tween(begin: 1.0, end: 1.3).animate(
+                    CurvedAnimation(parent: _heartCtrl, curve: Curves.elasticOut),
+                  ),
                   child: GestureDetector(
                     onTap: _toggleFavorite,
                     child: Icon(
                       _isFavorite
                           ? Icons.favorite_rounded
                           : Icons.favorite_border_rounded,
-                      color:
-                      _isFavorite ? Colors.pinkAccent : Colors.white70,
+                      color: _isFavorite ? Colors.pinkAccent : Colors.white70,
                       size: 26,
                     ),
                   ),
                 ),
               ),
               Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
+                bottom: 0, left: 0, right: 0,
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: const BoxDecoration(
@@ -481,9 +466,7 @@ class _GalleryCardState extends State<_GalleryCard>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14),
+                        color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                 ),
               ),
@@ -494,6 +477,7 @@ class _GalleryCardState extends State<_GalleryCard>
     );
   }
 
+  // 🌈 Dialog chi tiết kiểu TPBank
   Future<void> _showDetail(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final favs = prefs.getStringList('favorites_local') ?? [];
@@ -502,73 +486,216 @@ class _GalleryCardState extends State<_GalleryCard>
     await showDialog(
       context: context,
       barrierDismissible: true,
-      useRootNavigator: true, // ✅ Đảm bảo overlay trên toàn app
+      useRootNavigator: true,
       builder: (BuildContext dialogContext) {
-        return Hero(
-          tag: widget.item.id,
-          child: Dialog(
-            backgroundColor: Colors.white.withOpacity(0.95),
-            insetPadding: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 600),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 🪄 Tiêu đề dialog
-                  DialogHeader(title: widget.item.title),
-
-                  // 🖼️ Ảnh chính
-                  FutureBuilder<String>(
-                    future: resolveImage(widget.item.image),
-                    builder: (_, snap) => snap.hasData
-                        ? CachedNetworkImage(
-                      imageUrl: snap.data!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                    )
-                        : const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: CircularProgressIndicator(),
+        return Center(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+            child: Dialog(
+              insetPadding: const EdgeInsets.all(16),
+              backgroundColor: Colors.white.withOpacity(0.85),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.5), width: 1.2),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 💜 Header gradient
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.item.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded,
+                                color: Colors.white, size: 22),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-                  // 📝 Nội dung prompt
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        widget.item.prompt,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          color: Color(0xFF4B4B4B),
-                          height: 1.6,
+                    // Ảnh có glow
+                    FutureBuilder<String>(
+                      future: resolveImage(widget.item.image),
+                      builder: (_, snap) => snap.hasData
+                          ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.deepPurple.withOpacity(0.25),
+                                blurRadius: 25,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: CachedNetworkImage(
+                              imageUrl: snap.data!,
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                            ),
+                          ),
+                        ),
+                      )
+                          : const Padding(
+                        padding: EdgeInsets.all(48),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                       ),
                     ),
-                  ),
 
-                  const Divider(height: 1, color: Color(0xFFE6E0F5)),
+                    // Prompt
+                    Flexible(
+                      child: Container(
+                        margin:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Text(
+                            widget.item.prompt,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: Color(0xFF3B2667),
+                              height: 1.8,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
 
-                  // 💡 Hành động dưới cùng
-                  DialogActions(
-                    isFavorite: isFav,
-                    onCopy: () {
-                      Clipboard.setData(ClipboardData(text: widget.item.prompt));
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(content: Text('✨ Đã sao chép prompt!')),
-                      );
-                    },
-                    onShare: () => Share.share(
-                        '${widget.item.title}\n\n${widget.item.prompt}'),
-                    onToggleFavorite: _toggleFavorite,
-                  ),
-                ],
+                    // Hành động
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _GlassButton(
+                            icon: Icons.copy_rounded,
+                            label: 'Sao chép',
+                            onTap: () {
+                              Clipboard.setData(
+                                ClipboardData(text: widget.item.prompt),
+                              );
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                const SnackBar(content: Text('✨ Đã sao chép prompt!')),
+                              );
+                            },
+                          ),
+                          _GlassButton(
+                            icon: Icons.share_rounded,
+                            label: 'Chia sẻ',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            onTap: () => Share.share(
+                              '${widget.item.title}\n\n${widget.item.prompt}',
+                            ),
+                          ),
+                          _GlassButton(
+                            icon: isFav
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            label: isFav ? 'Bỏ yêu thích' : 'Yêu thích',
+                            color: isFav ? Colors.pinkAccent : Colors.white.withOpacity(0.25),
+                            onTap: () async {
+                              await _toggleFavorite();
+                              Navigator.of(dialogContext).pop();
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+// 🔮 Nút kính mờ dùng chung
+class _GlassButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final LinearGradient? gradient;
+  final Color? color;
+
+  const _GlassButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.gradient,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          color: gradient == null ? (color ?? Colors.white.withOpacity(0.15)) : null,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.deepPurple.withOpacity(0.12),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
