@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+/// 🌈 Model đại diện cho 1 prompt (ảnh + nội dung)
 class PromptItem {
   final String id;
   final String title;
@@ -25,4 +28,20 @@ class PromptItem {
         : [],
     category: j['category']?.toString(),
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'image': image,
+    'prompt': prompt,
+    'tags': tags,
+    'category': category,
+  };
+
+  /// 🔹 Parse toàn bộ danh sách Prompt từ JSON string lưu trong SharedPreferences
+  static List<PromptItem> listFromJsonString(String jsonStr) {
+    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final items = (data['items'] ?? []) as List<dynamic>;
+    return items.map((e) => PromptItem.fromJson(e)).toList();
+  }
 }

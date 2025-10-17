@@ -603,6 +603,11 @@ class _GalleryCardState extends State<_GalleryCard>
                           _GlassButton(
                             icon: Icons.copy_rounded,
                             label: 'Sao chép',
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                             onTap: () {
                               Clipboard.setData(
                                 ClipboardData(text: widget.item.prompt),

@@ -1,9 +1,7 @@
-import 'dart:convert';
+// 💖 FavoriteScreen — TPBank Mobile 2025 Glass Aesthetic
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11,55 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/prompt_item.dart';
 import '../services/firebase_image_resolver.dart';
-import '../theme/app_theme.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/wonder_screen_wrapper.dart';
 
-/// 💾 Repository quản lý favorites (local + Firestore)
-class FavoriteRepository {
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
-
-  Future<List<String>> loadLocal() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList('favorites_local') ?? [];
-  }
-
-  Future<void> saveLocal(List<String> favs) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('favorites_local', favs);
-  }
-
-  Future<List<String>> loadOnline() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return [];
-    final snapshot = await _firestore
-        .collection('favorites')
-        .doc(uid)
-        .collection('items')
-        .get();
-    return snapshot.docs.map((d) => d.id).toList();
-  }
-
-  Future<void> syncLocalToOnline(List<String> favs) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-    final ref = _firestore.collection('favorites').doc(uid).collection('items');
-    for (final id in favs) {
-      await ref.doc(id).set({'createdAt': FieldValue.serverTimestamp()});
-    }
-  }
-
-  /// 🔹 Gộp dữ liệu khi đăng nhập
-  Future<List<String>> mergeFavorites() async {
-    final local = await loadLocal();
-    final online = await loadOnline();
-    final merged = {...local, ...online}.toList();
-    await saveLocal(merged);
-    await syncLocalToOnline(merged);
-    return merged;
-  }
-}
-
-/// 💖 Màn hình ảnh yêu thích có đồng bộ online/offline
 class FavoriteScreen extends StatefulWidget {
   const FavoriteScreen({super.key});
 
@@ -70,7 +22,6 @@ class FavoriteScreen extends StatefulWidget {
 class _FavoriteScreenState extends State<FavoriteScreen>
     with TickerProviderStateMixin {
   List<PromptItem> favorites = [];
-  final _repo = FavoriteRepository();
 
   @override
   void initState() {
@@ -78,384 +29,410 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     _loadFavorites();
   }
 
-  /// 🔄 Load favorites (ưu tiên online nếu đã login)
+  /// 🔹 Load danh sách yêu thích từ cache
   Future<void> _loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
-    final user = FirebaseAuth.instance.currentUser;
-    List<String> favIds = [];
-
-    if (user != null) {
-      favIds = await _repo.mergeFavorites();
-    } else {
-      favIds = await _repo.loadLocal();
-    }
-
+    final favIds = prefs.getStringList('favorites_local') ?? [];
     final cachedJson = prefs.getString('prompts_cache');
-    if (cachedJson == null) return;
-
-    final data = jsonDecode(cachedJson) as Map<String, dynamic>;
-    final allItems = ((data['items'] ?? []) as List)
-        .map((e) => PromptItem.fromJson(e))
-        .toList();
-
-    setState(() {
-      favorites = allItems.where((e) => favIds.contains(e.id)).toList();
-    });
+    if (cachedJson != null) {
+      final items = PromptItem.listFromJsonString(
+        cachedJson,
+      ).where((p) => favIds.contains(p.id)).toList();
+      setState(() => favorites = items);
+    }
   }
 
-  /// ❌ Xóa khỏi yêu thích
+  /// 🔹 Xoá khỏi danh sách yêu thích
   Future<void> _removeFavorite(String id) async {
-    final user = FirebaseAuth.instance.currentUser;
-    List<String> local = await _repo.loadLocal();
-    local.remove(id);
-    await _repo.saveLocal(local);
-
-    if (user != null) {
-      await FirebaseFirestore.instance
-          .collection('favorites')
-          .doc(user.uid)
-          .collection('items')
-          .doc(id)
-          .delete();
-    }
-
-    setState(() => favorites.removeWhere((e) => e.id == id));
+    final prefs = await SharedPreferences.getInstance();
+    final favs = prefs.getStringList('favorites_local') ?? [];
+    favs.remove(id);
+    await prefs.setStringList('favorites_local', favs);
+    setState(() => favorites.removeWhere((p) => p.id == id));
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('💔 Đã xóa khỏi yêu thích')));
+    ).showSnackBar(const SnackBar(content: Text('🗑️ Đã xoá khỏi yêu thích')));
   }
 
-  /// 💫 Popup chi tiết ảnh có drag-to-close + blur
-  void _showFavoriteDetail(BuildContext context, PromptItem item) async {
-    final prefs = await SharedPreferences.getInstance();
-    final user = FirebaseAuth.instance.currentUser;
-    List<String> favList = await _repo.loadLocal();
-    bool isFavorite = favList.contains(item.id);
+  @override
+  Widget build(BuildContext context) {
+    return WonderScreenWrapper(
+      scrollable: false,
+      child: Stack(
+        children: [
+          // 💎 Nền trong suốt (đồng bộ gradient MainScreen)
+          Positioned.fill(child: Container(color: Colors.transparent)),
 
-    double dragOffset = 0.0;
-    const double dragToCloseThreshold = 140;
-    final bounceCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
+          SafeArea(
+            top: false,
+            bottom: true,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
 
-    showGeneralDialog(
-      context: context,
-      barrierLabel: "Chi tiết ảnh yêu thích",
-      barrierDismissible: true,
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 450),
-      transitionBuilder: (context, animation, _, child) {
-        final fade = Tween(begin: 0.0, end: 1.0).animate(animation);
-        final slide = Tween(
-          begin: const Offset(0, 0.08),
-          end: Offset.zero,
-        ).chain(CurveTween(curve: Curves.easeOut));
-        final scale = Tween(
-          begin: 0.97,
-          end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeOutBack));
-        return FadeTransition(
-          opacity: fade,
-          child: SlideTransition(
-            position: animation.drive(slide),
-            child: ScaleTransition(scale: animation.drive(scale), child: child),
-          ),
-        );
-      },
-      pageBuilder: (_, __, ___) => StatefulBuilder(
-        builder: (context, setDialogState) => Stack(
-          children: [
-            AnimatedOpacity(
-              duration: const Duration(milliseconds: 120),
-              opacity: (1 - (dragOffset / 250)).clamp(0.2, 0.8),
-              child: Container(
-                color: Colors.black.withOpacity(0.4),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: (8 - dragOffset / 30).clamp(0.0, 8.0),
-                    sigmaY: (8 - dragOffset / 30).clamp(0.0, 8.0),
+                // 🌈 Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Bộ sưu tập yêu thích 💜',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      foreground: Paint()
+                        ..shader = const LinearGradient(
+                          colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                        ).createShader(const Rect.fromLTWH(0, 0, 200, 70)),
+                    ),
                   ),
-                  child: const SizedBox.expand(),
                 ),
-              ),
+                const SizedBox(height: 12),
+
+                // 💫 Lưới ảnh yêu thích
+                Expanded(
+                  child: favorites.isEmpty
+                      ? const EmptyState(
+                          message: 'Chưa có ảnh nào trong mục yêu thích 💫',
+                        )
+                      : GridView.builder(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 16,
+                                childAspectRatio: 0.9,
+                              ),
+                          itemCount: favorites.length,
+                          itemBuilder: (_, i) {
+                            final item = favorites[i];
+                            return _FavoriteCard(
+                              item: item,
+                              onRemove: () => _removeFavorite(item.id),
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-            // 🖼️ Dialog ảnh chi tiết
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onVerticalDragUpdate: (details) {
-                dragOffset += details.delta.dy;
-                if (dragOffset > 0) setDialogState(() {});
-              },
-              onVerticalDragEnd: (_) async {
-                if (dragOffset > dragToCloseThreshold) {
-                  Navigator.of(context).pop();
-                } else if (dragOffset > 0) {
-                  final bounceAnim = Tween<double>(begin: dragOffset, end: 0)
-                      .animate(
-                        CurvedAnimation(
-                          parent: bounceCtrl,
-                          curve: Curves.elasticOut,
-                        ),
-                      );
-                  bounceCtrl.addListener(() {
-                    setDialogState(() => dragOffset = bounceAnim.value);
-                  });
-                  await bounceCtrl.forward(from: 0);
-                }
-              },
-              child: Opacity(
-                opacity: (1 - (dragOffset / 300)).clamp(0.6, 1.0),
-                child: Transform.translate(
-                  offset: Offset(0, dragOffset * 0.5),
-                  child: Center(
-                    child: Dialog(
-                      insetPadding: const EdgeInsets.all(16),
-                      backgroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.of(context).size.height * 0.9,
-                          maxWidth: 500,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Header
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: const BoxDecoration(
-                                color: AppTheme.cream,
-                                borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(20),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      item.title,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      color: AppTheme.inkSoft,
-                                    ),
-                                    onPressed: () => Navigator.pop(context),
-                                  ),
-                                ],
-                              ),
-                            ),
+// 🧩 Card ảnh yêu thích
+class _FavoriteCard extends StatelessWidget {
+  final PromptItem item;
+  final VoidCallback onRemove;
 
-                            // Ảnh
-                            FutureBuilder<String>(
-                              future: resolveImage(item.image),
-                              builder: (context, snap) => snap.hasData
-                                  ? CachedNetworkImage(
-                                      imageUrl: snap.data!,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : const Padding(
-                                      padding: EdgeInsets.all(32),
-                                      child: CircularProgressIndicator(),
-                                    ),
-                            ),
+  const _FavoriteCard({required this.item, required this.onRemove});
 
-                            // Prompt mô tả
-                            Expanded(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.all(16),
-                                child: Text(
-                                  item.prompt,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    color: AppTheme.inkSoft,
-                                    height: 1.6,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const Divider(height: 1, color: AppTheme.line),
-
-                            // Nút hành động
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                              child: Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 10,
-                                runSpacing: 8,
-                                children: [
-                                  ElevatedButton.icon(
-                                    onPressed: () {
-                                      Clipboard.setData(
-                                        ClipboardData(text: item.prompt),
-                                      );
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            '✨ Đã sao chép prompt!',
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.copy_rounded),
-                                    label: const Text('Sao chép'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primarySoft,
-                                    ),
-                                  ),
-                                  ElevatedButton.icon(
-                                    onPressed: () => Share.share(
-                                      '${item.title}\n\n${item.prompt}',
-                                    ),
-                                    icon: const Icon(Icons.share_rounded),
-                                    label: const Text('Chia sẻ'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primary,
-                                    ),
-                                  ),
-                                  ElevatedButton.icon(
-                                    icon: const Icon(
-                                      Icons.favorite_rounded,
-                                      color: Colors.white,
-                                    ),
-                                    label: Text(
-                                      isFavorite ? 'Bỏ yêu thích' : 'Yêu thích',
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: isFavorite
-                                          ? Colors.pinkAccent
-                                          : AppTheme.lavender,
-                                    ),
-                                    onPressed: () async {
-                                      setDialogState(
-                                        () => isFavorite = !isFavorite,
-                                      );
-                                      if (!isFavorite) {
-                                        await _removeFavorite(item.id);
-                                        Navigator.pop(context);
-                                      } else {
-                                        favList.add(item.id);
-                                        await _repo.saveLocal(favList);
-                                        if (user != null) {
-                                          await _repo.syncLocalToOnline(
-                                            favList,
-                                          );
-                                        }
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showDetail(context),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.deepPurple.withOpacity(0.25),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              FutureBuilder<String>(
+                future: resolveImage(item.image),
+                builder: (_, snap) {
+                  if (!snap.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
+                  }
+                  return CachedNetworkImage(
+                    imageUrl: snap.data!,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                  );
+                },
+              ),
+              // overlay gradient
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.4),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+              // title
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.black87, Colors.transparent],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                    ),
+                  ),
+                  child: Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+              // delete button
+              Positioned(
+                top: 6,
+                right: 6,
+                child: GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(6),
+                    child: const Icon(
+                      Icons.delete_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  /// 🧩 Nội dung chính
-  @override
-  Widget build(BuildContext context) {
-    if (favorites.isEmpty) {
-      return const Center(
-        child: Text(
-          'Chưa có ảnh nào được lưu 💕',
-          style: TextStyle(color: AppTheme.inkSoft),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadFavorites,
-      color: AppTheme.primary,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 14,
-          childAspectRatio: .9,
-        ),
-        itemCount: favorites.length,
-        itemBuilder: (_, i) {
-          final item = favorites[i];
-          return GestureDetector(
-            onTap: () => _showFavoriteDetail(context, item),
+  void _showDetail(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+          child: Dialog(
+            insetPadding: const EdgeInsets.all(16),
+            backgroundColor: Colors.white.withOpacity(0.85),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+              side: BorderSide(
+                color: Colors.white.withOpacity(0.5),
+                width: 1.2,
+              ),
+            ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Stack(
+              borderRadius: BorderRadius.circular(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  FutureBuilder<String>(
-                    future: resolveImage(item.image),
-                    builder: (context, snap) {
-                      if (!snap.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      }
-                      return CachedNetworkImage(
-                        imageUrl: snap.data!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      );
-                    },
-                  ),
-                  const Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Icon(
-                      Icons.favorite_rounded,
-                      color: Colors.pinkAccent,
-                      size: 26,
+                  // Header gradient
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          onPressed: () => Navigator.of(dialogCtx).pop(),
+                        ),
+                      ],
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
+
+                  // Image
+                  FutureBuilder<String>(
+                    future: resolveImage(item.image),
+                    builder: (_, snap) => snap.hasData
+                        ? Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: CachedNetworkImage(
+                                imageUrl: snap.data!,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                              ),
+                            ),
+                          )
+                        : const Padding(
+                            padding: EdgeInsets.all(48),
+                            child: CircularProgressIndicator(),
+                          ),
+                  ),
+
+                  // Prompt
+                  Flexible(
                     child: Container(
-                      color: Colors.black54,
-                      padding: const EdgeInsets.all(6),
-                      child: Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Text(
+                          item.prompt,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Color(0xFF3B2667),
+                            height: 1.8,
+                          ),
                         ),
                       ),
+                    ),
+                  ),
+
+                  // Actions
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _GlassButton(
+                          icon: Icons.copy_rounded,
+                          label: 'Sao chép',
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: item.prompt));
+                            ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                              const SnackBar(
+                                content: Text('✨ Đã sao chép prompt!'),
+                              ),
+                            );
+                          },
+                        ),
+                        _GlassButton(
+                          icon: Icons.share_rounded,
+                          label: 'Chia sẻ',
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          onTap: () =>
+                              Share.share('${item.title}\n\n${item.prompt}'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          );
-        },
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ✨ Reusable Glass Button
+class _GlassButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final LinearGradient? gradient;
+
+  const _GlassButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.gradient,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          color: gradient == null
+              ? Colors.white.withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.deepPurple.withOpacity(0.12),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
