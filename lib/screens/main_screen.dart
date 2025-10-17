@@ -6,7 +6,7 @@ import 'package:wonderspace.gallery/screens/gallery_screen.dart';
 import 'package:wonderspace.gallery/screens/setting_screen.dart';
 import '../theme/app_theme.dart';
 
-/// 🌈 MainScreen — phiên bản đồng bộ màu tím–cam premium
+/// 🌈 MainScreen — Premium Glass TPBank 2025 (gradient liền mạch)
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -14,8 +14,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen>
-    with TickerProviderStateMixin {
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _currentIndex = 0;
   bool _isNavVisible = true;
   bool _phase = false;
@@ -28,6 +27,7 @@ class _MainScreenState extends State<MainScreen>
   @override
   void initState() {
     super.initState();
+
     _navCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
@@ -46,7 +46,7 @@ class _MainScreenState extends State<MainScreen>
     );
     _iconCtrls[_currentIndex].forward();
 
-    // 🌈 Gradient phase animation (chuyển màu nhẹ)
+    // 🌈 Gradient phase auto change
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 4));
       if (!mounted) return false;
@@ -88,7 +88,10 @@ class _MainScreenState extends State<MainScreen>
   @override
   Widget build(BuildContext context) {
     final screens = [
-      GalleryScreen(onScrollDirectionChanged: _onScrollDirection),
+      GalleryScreen(
+        onScrollDirectionChanged: _onScrollDirection,
+        gradientPhase: _phase,
+      ),
       const FavoriteScreen(),
       const SettingScreen(),
     ];
@@ -121,7 +124,7 @@ class _MainScreenState extends State<MainScreen>
         ),
       ),
 
-      // 🌈 Floating Gradient Nav Bar — đồng màu với GalleryScreen
+      // 🌈 Floating Gradient NavBar — cùng phase màu với Gallery
       bottomNavigationBar: SizeTransition(
         sizeFactor: _fadeAnim,
         axisAlignment: -1.0,
@@ -137,28 +140,28 @@ class _MainScreenState extends State<MainScreen>
                   gradient: LinearGradient(
                     colors: _phase
                         ? [
-                      const Color(0xFF6C3DFF).withOpacity(0.75),
-                      const Color(0xFFFF8B00).withOpacity(0.7)
+                      const Color(0xFF5E2CED).withOpacity(0.8),
+                      const Color(0xFFFF8B00).withOpacity(0.75),
                     ]
                         : [
-                      const Color(0xFFA58CFF).withOpacity(0.7),
-                      const Color(0xFFFFC480).withOpacity(0.65)
+                      const Color(0xFFA58CFF).withOpacity(0.75),
+                      const Color(0xFFFFC480).withOpacity(0.7),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 0.8,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.deepPurple.withOpacity(0.18),
+                      color: Colors.deepPurple.withOpacity(0.15),
                       blurRadius: 40,
                       offset: const Offset(0, -4),
                     ),
                   ],
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.25),
-                    width: 0.8,
-                  ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -179,7 +182,6 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
-  /// 💫 Icon có hiệu ứng gradient & pulse sáng
   Widget _buildNavItem(IconData icon, String label, int index) {
     final isActive = _currentIndex == index;
     final anim = CurvedAnimation(
@@ -207,7 +209,7 @@ class _MainScreenState extends State<MainScreen>
                   ? [
                 BoxShadow(
                   color: const Color(0xFF5E2CED).withOpacity(0.4),
-                  blurRadius: 16,
+                  blurRadius: 18,
                   spreadRadius: 1,
                 ),
               ]
@@ -229,8 +231,7 @@ class _MainScreenState extends State<MainScreen>
             duration: const Duration(milliseconds: 250),
             style: TextStyle(
               fontSize: 12,
-              color:
-              isActive ? Colors.white : Colors.white.withOpacity(0.7),
+              color: isActive ? Colors.white : Colors.white.withOpacity(0.7),
               fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
             ),
             child: Text(label),

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/rendering.dart';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,11 +22,16 @@ import 'widgets/dialog_actions.dart';
 import 'widgets/dialog_header.dart';
 import 'widgets/empty_state.dart';
 
-/// 💎 GalleryScreen — phiên bản liền mạch với header + search bar kính mờ
+/// 💎 GalleryScreen — đồng bộ gradient & hiệu ứng kính với MainScreen
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<ScrollDirection>? onScrollDirectionChanged;
+  final bool gradientPhase;
 
-  const GalleryScreen({super.key, this.onScrollDirectionChanged});
+  const GalleryScreen({
+    super.key,
+    this.onScrollDirectionChanged,
+    this.gradientPhase = false,
+  });
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -45,7 +49,6 @@ class _GalleryScreenState extends State<GalleryScreen>
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
-  bool _gradientPhase = false;
 
   late final AnimationController _animCtrl;
   late final Animation<double> _fadeAnim;
@@ -180,135 +183,170 @@ class _GalleryScreenState extends State<GalleryScreen>
 
     return WonderScreenWrapper(
       scrollable: false,
-      child: AnimatedContainer(
-        duration: const Duration(seconds: 5),
-        onEnd: () => setState(() => _gradientPhase = !_gradientPhase),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: _gradientPhase
-                ? [const Color(0xFF5E2CED), const Color(0xFFFF8B00)]
-                : [const Color(0xFFA58CFF), const Color(0xFFFFC480)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: SafeArea(
-          top: false, // 👈 Bỏ safe top để header liền với gradient
-          bottom: true,
-          child: Column(
-            children: [
-              // 🌟 Header chào + thanh tìm kiếm liền khối
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 32, 20, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const [
-                    Text(
-                      'Xin chào, Cường 👋',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundImage: AssetImage('assets/avatar.png'),
-                    ),
-                  ],
-                ),
+      child: Stack(
+        children: [
+          // 💫 Nền trong suốt đồng bộ với gradient của MainScreen
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: widget.gradientPhase
+                    ? [
+                  const Color(0xFF5E2CED).withOpacity(0.12),
+                  const Color(0xFFFF8B00).withOpacity(0.12)
+                ]
+                    : [
+                  const Color(0xFFA58CFF).withOpacity(0.12),
+                  const Color(0xFFFFC480).withOpacity(0.12)
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20),
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.4),
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.search_rounded,
-                            color: Colors.white70),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: _searchCtrl,
-                            onChanged: (_) => _applyFilters(),
-                            style: const TextStyle(
-                                fontSize: 15, color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Tìm kiếm $randomHint...',
-                              hintStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.6)),
-                              border: InputBorder.none,
-                            ),
-                          ),
+            ),
+          ),
+
+          // 🌟 Nội dung chính
+          SafeArea(
+            top: false,
+            bottom: true,
+            child: Column(
+              children: [
+                // Header + search
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 32, 20, 0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: const [
+                      Text(
+                        'Xin chào, Cường 👋',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
                         ),
-                        if (_searchCtrl.text.isNotEmpty)
-                          GestureDetector(
-                            onTap: () {
-                              _searchCtrl.clear();
-                              _applyFilters();
-                            },
-                            child: const Icon(Icons.clear_rounded,
-                                color: Colors.white70, size: 20),
-                          ),
-                      ],
-                    ),
+                      ),
+                      CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Colors.white30,
+                        backgroundImage: AssetImage('assets/avatar.png'),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-
-              // 🖼️ Gallery grid
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: () => _loadTrending(forceRefresh: true),
-                  color: Colors.deepPurpleAccent,
-                  child: FadeTransition(
-                    opacity: _fadeAnim,
-                    child: ScaleTransition(
-                      scale: _scaleAnim,
-                      child: ListView(
-                        controller: _scrollCtrl,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 12),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.4),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Row(
                         children: [
-                          _visible.isEmpty
-                              ? const EmptyState()
-                              : _GalleryGrid(items: _visible),
-                          if (_loadingMore)
-                            const Padding(
-                              padding: EdgeInsets.all(20),
-                              child: Center(
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2)),
+                          const Icon(Icons.search_rounded,
+                              color: Colors.white70),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchCtrl,
+                              onChanged: (_) => _applyFilters(),
+                              style: const TextStyle(
+                                  fontSize: 15, color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'Tìm kiếm $randomHint...',
+                                hintStyle: TextStyle(
+                                    color: Colors.white.withOpacity(0.6)),
+                                border: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                          if (_searchCtrl.text.isNotEmpty)
+                            GestureDetector(
+                              onTap: () {
+                                _searchCtrl.clear();
+                                _applyFilters();
+                              },
+                              child: const Icon(Icons.clear_rounded,
+                                  color: Colors.white70, size: 20),
                             ),
                         ],
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+
+                // Grid hiển thị ảnh
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () => _loadTrending(forceRefresh: true),
+                    color: Colors.deepPurpleAccent,
+                    child: FadeTransition(
+                      opacity: _fadeAnim,
+                      child: ScaleTransition(
+                        scale: _scaleAnim,
+                        child: ListView(
+                          controller: _scrollCtrl,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
+                          children: [
+                            _visible.isEmpty
+                                ? const EmptyState()
+                                : _GalleryGrid(items: _visible),
+                            if (_loadingMore)
+                              const Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+
+          // ✨ Blend layer — làm mờ chuyển giữa body và nav bar
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 80,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.05),
+                      Colors.black.withOpacity(0.1),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// 🧩 Grid ảnh
+/// 🧩 Grid ảnh có hiệu ứng mờ & ánh sáng tím
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
   const _GalleryGrid({required this.items});
@@ -328,7 +366,7 @@ class _GalleryGrid extends StatelessWidget {
   );
 }
 
-/// ❤️ Card ảnh với hiệu ứng kính mờ + glow
+/// ❤️ Card ảnh với hiệu ứng glow & glass
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   const _GalleryCard({required this.item});
@@ -387,7 +425,7 @@ class _GalleryCardState extends State<_GalleryCard>
     _heartCtrl.forward(from: 0);
 
     if (_isFavorite) {
-      if (!favs.contains(widget.item.id)) favs.add(widget.item.id);
+      favs.add(widget.item.id);
       if (user != null) {
         await _firestore
             .collection('favorites')
@@ -409,15 +447,13 @@ class _GalleryCardState extends State<_GalleryCard>
     }
 
     await prefs.setStringList('favorites_local', favs);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: Colors.deepPurpleAccent.withOpacity(0.85),
-        content: Text(
-          _isFavorite ? '💖 Đã lưu vào yêu thích!' : '🗑️ Đã xóa khỏi yêu thích!',
-          style: const TextStyle(color: Colors.white),
-        ),
-      ));
-    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      backgroundColor: Colors.deepPurpleAccent.withOpacity(0.85),
+      content: Text(
+        _isFavorite ? '💖 Đã lưu vào yêu thích!' : '🗑️ Đã xóa khỏi yêu thích!',
+        style: const TextStyle(color: Colors.white),
+      ),
+    ));
   }
 
   @override
@@ -430,8 +466,8 @@ class _GalleryCardState extends State<_GalleryCard>
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.deepPurple.withOpacity(0.2),
-              blurRadius: 18,
+              color: Colors.deepPurple.withOpacity(0.25),
+              blurRadius: 20,
               offset: const Offset(0, 8),
             ),
           ],
@@ -458,10 +494,13 @@ class _GalleryCardState extends State<_GalleryCard>
                 },
               ),
               Positioned.fill(
-                child: DecoratedBox(
+                child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.transparent, Colors.black.withOpacity(0.35)],
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.35)
+                      ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                     ),
@@ -472,9 +511,9 @@ class _GalleryCardState extends State<_GalleryCard>
                 top: 8,
                 right: 8,
                 child: ScaleTransition(
-                  scale: Tween(begin: 1.0, end: 1.25).animate(
-                    CurvedAnimation(parent: _heartCtrl, curve: Curves.elasticOut),
-                  ),
+                  scale: Tween(begin: 1.0, end: 1.3)
+                      .animate(CurvedAnimation(
+                      parent: _heartCtrl, curve: Curves.elasticOut)),
                   child: GestureDetector(
                     onTap: _toggleFavorite,
                     child: Icon(
@@ -505,10 +544,9 @@ class _GalleryCardState extends State<_GalleryCard>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14),
                   ),
                 ),
               ),
@@ -522,7 +560,7 @@ class _GalleryCardState extends State<_GalleryCard>
   Future<void> _showDetail(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final favs = prefs.getStringList('favorites_local') ?? [];
-    final isFav = favs.contains(widget.item.id);
+    bool isFav = favs.contains(widget.item.id);
 
     showGeneralDialog(
       context: context,
@@ -535,8 +573,7 @@ class _GalleryCardState extends State<_GalleryCard>
             backgroundColor: Colors.white.withOpacity(0.9),
             insetPadding: const EdgeInsets.all(16),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
+                borderRadius: BorderRadius.circular(24)),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -567,14 +604,14 @@ class _GalleryCardState extends State<_GalleryCard>
                 DialogActions(
                   isFavorite: isFav,
                   onCopy: () {
-                    Clipboard.setData(ClipboardData(text: widget.item.prompt));
+                    Clipboard.setData(
+                        ClipboardData(text: widget.item.prompt));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('✨ Đã sao chép!')),
                     );
                   },
                   onShare: () => Share.share(
-                    '${widget.item.title}\n\n${widget.item.prompt}',
-                  ),
+                      '${widget.item.title}\n\n${widget.item.prompt}'),
                   onToggleFavorite: _toggleFavorite,
                 ),
               ],
