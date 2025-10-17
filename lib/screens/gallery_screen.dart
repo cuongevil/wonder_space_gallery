@@ -499,63 +499,76 @@ class _GalleryCardState extends State<_GalleryCard>
     final favs = prefs.getStringList('favorites_local') ?? [];
     bool isFav = favs.contains(widget.item.id);
 
-    showGeneralDialog(
+    await showDialog(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.3),
-      pageBuilder: (_, __, ___) => Center(
-        child: Hero(
+      useRootNavigator: true, // ✅ Đảm bảo overlay trên toàn app
+      builder: (BuildContext dialogContext) {
+        return Hero(
           tag: widget.item.id,
           child: Dialog(
-            backgroundColor: Colors.white.withOpacity(0.9),
+            backgroundColor: Colors.white.withOpacity(0.95),
             insetPadding: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24)),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DialogHeader(title: widget.item.title),
-                FutureBuilder<String>(
-                  future: resolveImage(widget.item.image),
-                  builder: (_, snap) => snap.hasData
-                      ? CachedNetworkImage(imageUrl: snap.data!)
-                      : const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: CircularProgressIndicator(),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 600),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 🪄 Tiêu đề dialog
+                  DialogHeader(title: widget.item.title),
+
+                  // 🖼️ Ảnh chính
+                  FutureBuilder<String>(
+                    future: resolveImage(widget.item.image),
+                    builder: (_, snap) => snap.hasData
+                        ? CachedNetworkImage(
+                      imageUrl: snap.data!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                    )
+                        : const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: CircularProgressIndicator(),
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      widget.item.prompt,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: AppTheme.inkSoft,
-                        height: 1.6,
+
+                  // 📝 Nội dung prompt
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        widget.item.prompt,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Color(0xFF4B4B4B),
+                          height: 1.6,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const Divider(height: 1, color: AppTheme.line),
-                DialogActions(
-                  isFavorite: isFav,
-                  onCopy: () {
-                    Clipboard.setData(
-                        ClipboardData(text: widget.item.prompt));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('✨ Đã sao chép!')),
-                    );
-                  },
-                  onShare: () => Share.share(
-                      '${widget.item.title}\n\n${widget.item.prompt}'),
-                  onToggleFavorite: _toggleFavorite,
-                ),
-              ],
+
+                  const Divider(height: 1, color: Color(0xFFE6E0F5)),
+
+                  // 💡 Hành động dưới cùng
+                  DialogActions(
+                    isFavorite: isFav,
+                    onCopy: () {
+                      Clipboard.setData(ClipboardData(text: widget.item.prompt));
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(content: Text('✨ Đã sao chép prompt!')),
+                      );
+                    },
+                    onShare: () => Share.share(
+                        '${widget.item.title}\n\n${widget.item.prompt}'),
+                    onToggleFavorite: _toggleFavorite,
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
