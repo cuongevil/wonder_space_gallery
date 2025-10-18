@@ -1,3 +1,4 @@
+// ⚙️ SettingScreen — TPBank Glass Gradient 2025 (đồng bộ màu với MainScreen)
 import 'dart:ui';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -6,7 +7,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/wonder_screen_wrapper.dart';
 
-/// ⚙️ SettingScreen — hiển thị glass trong suốt, đồng bộ gradient với MainScreen
 class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
 
@@ -19,6 +19,7 @@ class _SettingScreenState extends State<SettingScreen>
   String _version = '';
   User? _user;
   bool _loading = false;
+  bool _phase = false;
 
   late final AnimationController _fadeCtrl;
   late final AnimationController _glowCtrl;
@@ -43,12 +44,20 @@ class _SettingScreenState extends State<SettingScreen>
     _glowCtrl =
     AnimationController(vsync: this, duration: const Duration(seconds: 3))
       ..repeat(reverse: true);
-    _glowAnim = Tween<double>(begin: 0.4, end: 0.9)
-        .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+    _glowAnim =
+        Tween<double>(begin: 0.4, end: 0.9).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
 
     _shimmerCtrl =
     AnimationController(vsync: this, duration: const Duration(seconds: 8))
       ..repeat();
+
+    // 🌈 Auto gradient chuyển màu mượt
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 4));
+      if (!mounted) return false;
+      setState(() => _phase = !_phase);
+      return true;
+    });
   }
 
   @override
@@ -76,8 +85,7 @@ class _SettingScreenState extends State<SettingScreen>
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      final userCred =
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCred = await FirebaseAuth.instance.signInWithCredential(credential);
       setState(() {
         _user = userCred.user;
         _loading = false;
@@ -122,96 +130,108 @@ class _SettingScreenState extends State<SettingScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 🌈 Nền trong suốt + shimmer ánh sáng nhẹ (trên gradient của MainScreen)
-        AnimatedBuilder(
-          animation: _shimmerCtrl,
-          builder: (context, _) {
-            final dx = _shimmerCtrl.value * 2 - 1;
-            return ShaderMask(
-              shaderCallback: (rect) => LinearGradient(
-                colors: [
-                  Colors.white.withOpacity(0.25),
-                  Colors.white.withOpacity(0.05),
-                  Colors.white.withOpacity(0.25),
-                ],
-                begin: Alignment(-1.0 + dx, -1.0),
-                end: Alignment(1.0 + dx, 1.0),
-              ).createShader(rect),
-              blendMode: BlendMode.srcOver,
-              child: Container(color: Colors.transparent),
-            );
-          },
+    return AnimatedContainer(
+      duration: const Duration(seconds: 4),
+      onEnd: () => setState(() => _phase = !_phase),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: _phase
+              ? [const Color(0xFF5E2CED), const Color(0xFFFF8B00)]
+              : [const Color(0xFFA58CFF), const Color(0xFFFFC480)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+      ),
+      child: Stack(
+        children: [
+          AnimatedBuilder(
+            animation: _shimmerCtrl,
+            builder: (context, _) {
+              final dx = _shimmerCtrl.value * 2 - 1;
+              return ShaderMask(
+                shaderCallback: (rect) => LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.25),
+                    Colors.white.withOpacity(0.05),
+                    Colors.white.withOpacity(0.25),
+                  ],
+                  begin: Alignment(-1.0 + dx, -1.0),
+                  end: Alignment(1.0 + dx, 1.0),
+                ).createShader(rect),
+                blendMode: BlendMode.srcOver,
+                child: Container(color: Colors.transparent),
+              );
+            },
+          ),
 
-        // 💫 Blur nhẹ trên toàn màn
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(color: Colors.white.withOpacity(0.08)),
-        ),
+          // 💫 Blur glass overlay nhẹ
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(color: Colors.white.withOpacity(0.06)),
+          ),
 
-        // 🌸 Nội dung chính
-        FadeTransition(
-          opacity: _fadeAnim,
-          child: SlideTransition(
-            position: _slideAnim,
-            child: WonderScreenWrapper(
-              scrollable: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(),
-                  const SizedBox(height: 28),
-                  _buildGlassCard(
-                    icon: Icons.cloud_outlined,
-                    title: 'Tài khoản ☁️',
-                    content: _buildLoginCard(),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildGlassCard(
-                    icon: Icons.support_agent_rounded,
-                    title: 'Hỗ trợ 💬',
-                    content: Column(
-                      children: [
-                        _buildSettingItem(
-                          Icons.privacy_tip_outlined,
-                          'Chính sách & Quyền riêng tư',
-                          'Xem thông tin và điều khoản sử dụng.',
-                          _openPrivacyPolicy,
-                        ),
-                        _buildSettingItem(
-                          Icons.email_outlined,
-                          'Góp ý & Báo lỗi',
-                          'Gửi phản hồi trực tiếp qua email.',
-                          _sendFeedback,
-                        ),
-                      ],
+          // 🌸 Nội dung chính
+          FadeTransition(
+            opacity: _fadeAnim,
+            child: SlideTransition(
+              position: _slideAnim,
+              child: WonderScreenWrapper(
+                scrollable: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 28),
+                    _buildGlassCard(
+                      icon: Icons.cloud_outlined,
+                      title: 'Tài khoản ☁️',
+                      content: _buildLoginCard(),
                     ),
-                  ),
-                  const SizedBox(height: 40),
-                  Center(
-                    child: Text(
-                      'Phiên bản $_version',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                    const SizedBox(height: 20),
+                    _buildGlassCard(
+                      icon: Icons.support_agent_rounded,
+                      title: 'Hỗ trợ 💬',
+                      content: Column(
+                        children: [
+                          _buildSettingItem(
+                            Icons.privacy_tip_outlined,
+                            'Chính sách & Quyền riêng tư',
+                            'Xem thông tin và điều khoản sử dụng.',
+                            _openPrivacyPolicy,
+                          ),
+                          _buildSettingItem(
+                            Icons.email_outlined,
+                            'Góp ý & Báo lỗi',
+                            'Gửi phản hồi trực tiếp qua email.',
+                            _sendFeedback,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 40),
+                    Center(
+                      child: Text(
+                        'Phiên bản $_version',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
 
-        if (_loading)
-          Container(
-            color: Colors.black.withOpacity(0.25),
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-      ],
+          if (_loading)
+            Container(
+              color: Colors.black.withOpacity(0.25),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+        ],
+      ),
     );
   }
 
@@ -263,10 +283,7 @@ class _SettingScreenState extends State<SettingScreen>
                   _user != null
                       ? 'Cảm ơn bạn đã đồng hành cùng Wonder Space 💫'
                       : 'Đăng nhập để đồng bộ ảnh yêu thích nhé!',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                  ),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
                 ),
               ],
             ),
@@ -352,9 +369,7 @@ class _SettingScreenState extends State<SettingScreen>
               child: Text(
                 _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.3),
+                    color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.3),
               ),
             ),
           ),

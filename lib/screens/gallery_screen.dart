@@ -1,4 +1,4 @@
-// 💎 GalleryScreen — TPBank Mobile 2025 (Glass + Gradient + Hero Dialog)
+// 💎 GalleryScreen — TPBank Mobile 2025 (Glass + Gradient + Realtime Sync)
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -17,9 +17,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/prompt_item.dart';
 import '../services/app_open_ad_manager.dart';
 import '../services/firebase_image_resolver.dart';
-import '../theme/app_theme.dart';
 import '../widgets/wonder_screen_wrapper.dart';
-import 'widgets/empty_state.dart';
+import '../widgets/empty_state.dart';
 
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<ScrollDirection>? onScrollDirectionChanged;
@@ -58,10 +57,8 @@ class _GalleryScreenState extends State<GalleryScreen>
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
+    _animCtrl =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
     _scaleAnim = Tween<double>(begin: 0.97, end: 1)
         .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
@@ -74,8 +71,8 @@ class _GalleryScreenState extends State<GalleryScreen>
   @override
   void dispose() {
     _animCtrl.dispose();
-    _searchCtrl.dispose();
     _scrollCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -133,8 +130,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     final direction = _scrollCtrl.position.userScrollDirection;
     widget.onScrollDirectionChanged?.call(direction);
 
-    if (_scrollCtrl.position.pixels >=
-        _scrollCtrl.position.maxScrollExtent - 200) {
+    if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
       _loadMore();
     }
   }
@@ -169,16 +165,14 @@ class _GalleryScreenState extends State<GalleryScreen>
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text(_error!));
+
     final randomHint = _searchHints[Random().nextInt(_searchHints.length)];
 
     return WonderScreenWrapper(
       scrollable: false,
       child: Stack(
         children: [
-          // 💎 Nền trong suốt — lộ gradient từ MainScreen
           Positioned.fill(child: Container(color: Colors.transparent)),
-
-          // 🌸 Nội dung chính
           SafeArea(
             top: false,
             bottom: true,
@@ -195,22 +189,17 @@ class _GalleryScreenState extends State<GalleryScreen>
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.4),
-                          width: 0.8,
-                        ),
+                        border: Border.all(color: Colors.white.withOpacity(0.4), width: 0.8),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.search_rounded,
-                              color: Colors.white, size: 22),
+                          const Icon(Icons.search_rounded, color: Colors.white, size: 22),
                           const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _searchCtrl,
                               onChanged: (_) => _applyFilters(),
-                              style:
-                              const TextStyle(fontSize: 15, color: Colors.white),
+                              style: const TextStyle(fontSize: 15, color: Colors.white),
                               decoration: InputDecoration(
                                 hintText: 'Tìm kiếm $randomHint...',
                                 hintStyle:
@@ -234,8 +223,6 @@ class _GalleryScreenState extends State<GalleryScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // 🖼 Grid ảnh
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: () => _loadTrending(forceRefresh: true),
@@ -256,7 +243,8 @@ class _GalleryScreenState extends State<GalleryScreen>
                               const Padding(
                                 padding: EdgeInsets.all(20),
                                 child: Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2)),
+                                    child:
+                                    CircularProgressIndicator(strokeWidth: 2)),
                               ),
                           ],
                         ),
@@ -273,7 +261,6 @@ class _GalleryScreenState extends State<GalleryScreen>
   }
 }
 
-// 🧩 Grid hiển thị ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
   const _GalleryGrid({required this.items});
@@ -293,7 +280,6 @@ class _GalleryGrid extends StatelessWidget {
   );
 }
 
-// ❤️ Card ảnh
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   const _GalleryCard({required this.item});
@@ -308,39 +294,44 @@ class _GalleryCardState extends State<_GalleryCard>
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
   late AnimationController _heartCtrl;
+  StreamSubscription? _favSubscription;
 
   @override
   void initState() {
     super.initState();
-    _syncFavorite();
     _heartCtrl =
         AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _initFavoriteListener();
   }
 
   @override
   void dispose() {
+    _favSubscription?.cancel();
     _heartCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _syncFavorite() async {
+  /// 🔁 Lắng nghe realtime Firestore → UI
+  void _initFavoriteListener() async {
     final prefs = await SharedPreferences.getInstance();
-    final favLocal = prefs.getStringList('favorites_local') ?? [];
     final user = _auth.currentUser;
-    if (user != null) {
-      final snapshot = await _firestore
-          .collection('favorites')
-          .doc(user.uid)
-          .collection('items')
-          .get();
+
+    if (user == null) {
+      final favLocal = prefs.getStringList('favorites_local') ?? [];
+      setState(() => _isFavorite = favLocal.contains(widget.item.id));
+      return;
+    }
+
+    final userRef = _firestore.collection('favorites').doc(user.uid).collection('items');
+    _favSubscription = userRef.snapshots().listen((snapshot) async {
       final favOnline = snapshot.docs.map((d) => d.id).toList();
+      final favLocal = prefs.getStringList('favorites_local') ?? [];
       final merged = {...favLocal, ...favOnline}.toList();
       await prefs.setStringList('favorites_local', merged);
-      _isFavorite = merged.contains(widget.item.id);
-    } else {
-      _isFavorite = favLocal.contains(widget.item.id);
-    }
-    if (mounted) setState(() {});
+
+      final newFav = merged.contains(widget.item.id);
+      if (newFav != _isFavorite && mounted) setState(() => _isFavorite = newFav);
+    });
   }
 
   Future<void> _toggleFavorite() async {
@@ -374,13 +365,6 @@ class _GalleryCardState extends State<_GalleryCard>
     }
 
     await prefs.setStringList('favorites_local', favs);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      backgroundColor: Colors.deepPurpleAccent.withOpacity(0.85),
-      content: Text(
-        _isFavorite ? '💖 Đã lưu vào yêu thích!' : '🗑️ Đã xóa khỏi yêu thích!',
-        style: const TextStyle(color: Colors.white),
-      ),
-    ));
   }
 
   @override
@@ -451,7 +435,9 @@ class _GalleryCardState extends State<_GalleryCard>
                 ),
               ),
               Positioned(
-                bottom: 0, left: 0, right: 0,
+                bottom: 0,
+                left: 0,
+                right: 0,
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: const BoxDecoration(
@@ -466,7 +452,9 @@ class _GalleryCardState extends State<_GalleryCard>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14),
                   ),
                 ),
               ),
@@ -477,7 +465,7 @@ class _GalleryCardState extends State<_GalleryCard>
     );
   }
 
-  // 🌈 Dialog chi tiết kiểu TPBank
+  // 💜 Hero Dialog
   Future<void> _showDetail(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final favs = prefs.getStringList('favorites_local') ?? [];
@@ -503,7 +491,7 @@ class _GalleryCardState extends State<_GalleryCard>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 💜 Header gradient
+                    // Header
                     Container(
                       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                       decoration: const BoxDecoration(
@@ -534,8 +522,7 @@ class _GalleryCardState extends State<_GalleryCard>
                         ],
                       ),
                     ),
-
-                    // Ảnh có glow
+                    // Image
                     FutureBuilder<String>(
                       future: resolveImage(widget.item.image),
                       builder: (_, snap) => snap.hasData
@@ -569,12 +556,10 @@ class _GalleryCardState extends State<_GalleryCard>
                         ),
                       ),
                     ),
-
                     // Prompt
                     Flexible(
                       child: Container(
-                        margin:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.7),
@@ -593,8 +578,7 @@ class _GalleryCardState extends State<_GalleryCard>
                         ),
                       ),
                     ),
-
-                    // Hành động
+                    // Actions
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
                       child: Row(
@@ -610,10 +594,10 @@ class _GalleryCardState extends State<_GalleryCard>
                             ),
                             onTap: () {
                               Clipboard.setData(
-                                ClipboardData(text: widget.item.prompt),
-                              );
+                                  ClipboardData(text: widget.item.prompt));
                               ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                const SnackBar(content: Text('✨ Đã sao chép prompt!')),
+                                const SnackBar(
+                                    content: Text('✨ Đã sao chép prompt!')),
                               );
                             },
                           ),
@@ -625,16 +609,17 @@ class _GalleryCardState extends State<_GalleryCard>
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
-                            onTap: () => Share.share(
-                              '${widget.item.title}\n\n${widget.item.prompt}',
-                            ),
+                            onTap: () =>
+                                Share.share('${widget.item.title}\n\n${widget.item.prompt}'),
                           ),
                           _GlassButton(
                             icon: isFav
                                 ? Icons.favorite_rounded
                                 : Icons.favorite_border_rounded,
                             label: isFav ? 'Bỏ yêu thích' : 'Yêu thích',
-                            color: isFav ? Colors.pinkAccent : Colors.white.withOpacity(0.25),
+                            color: isFav
+                                ? Colors.pinkAccent
+                                : Colors.white.withOpacity(0.25),
                             onTap: () async {
                               await _toggleFavorite();
                               Navigator.of(dialogContext).pop();
@@ -654,7 +639,6 @@ class _GalleryCardState extends State<_GalleryCard>
   }
 }
 
-// 🔮 Nút kính mờ dùng chung
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final String label;

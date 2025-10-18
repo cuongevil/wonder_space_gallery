@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 🪄 WonderScreenWrapper
-/// Tự động chừa khoảng trống vừa đủ để nội dung không bị AppBar mờ đè.
-/// Dùng chung cho tất cả màn hình con trong MainScreen.
+/// 🪄 WonderScreenWrapper — giữ bố cục cách AppBar, padding tự động
 class WonderScreenWrapper extends StatelessWidget {
   final Widget child;
   final EdgeInsets? padding;
@@ -19,25 +17,17 @@ class WonderScreenWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final double statusBarHeight = MediaQuery.of(context).padding.top;
     final double topPadding = statusBarHeight + 30;
-
-    final effectivePadding = padding ??
-        EdgeInsets.fromLTRB(20, topPadding, 20, 32);
+    final effectivePadding = padding ?? EdgeInsets.fromLTRB(20, topPadding, 20, 32);
 
     if (scrollable) {
       return SafeArea(
-        top: false, // đã xử lý topPadding riêng
-        child: ListView(
-          padding: effectivePadding,
-          children: [child],
-        ),
+        top: false,
+        child: ListView(padding: effectivePadding, children: [child]),
       );
     } else {
       return SafeArea(
         top: false,
-        child: Padding(
-          padding: effectivePadding,
-          child: child,
-        ),
+        child: Padding(padding: effectivePadding, child: child),
       );
     }
   }
