@@ -31,7 +31,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
-    _listenAuthStateChanges(); // 👈 auto-sync khi login/logout
+    _listenAuthStateChanges(); // 🔁 auto-sync khi login/logout
 
     _navCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
     _fadeAnim = CurvedAnimation(parent: _navCtrl, curve: Curves.easeInOut);
@@ -95,15 +95,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     debugPrint('✅ Favorites synced (${merged.length} items)');
   }
 
-  @override
-  void dispose() {
-    _navCtrl.dispose();
-    for (final c in _iconCtrls) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
   void _onScrollDirection(ScrollDirection direction) {
     if (direction == ScrollDirection.reverse && _isNavVisible) {
       setState(() => _isNavVisible = false);
@@ -127,9 +118,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Cập nhật: Truyền onScrollDirection cho cả FavoriteScreen
     final screens = [
       GalleryScreen(onScrollDirectionChanged: _onScrollDirection),
-      const FavoriteScreen(),
+      FavoriteScreen(onScrollDirectionChanged: _onScrollDirection),
       const SettingScreen(),
     ];
 
@@ -154,6 +146,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           child: IndexedStack(key: ValueKey(_currentIndex), index: _currentIndex, children: screens),
         ),
       ),
+
+      // 🌈 Bottom Navigation — ẩn/hiện theo cuộn
       bottomNavigationBar: SizeTransition(
         sizeFactor: _fadeAnim,
         axisAlignment: -1.0,

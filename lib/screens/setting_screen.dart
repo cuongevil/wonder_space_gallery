@@ -1,9 +1,11 @@
-// ⚙️ SettingScreen — TPBank Glass Gradient 2025 (đồng bộ màu với MainScreen)
+// ⚙️ SettingScreen — TPBank Glass Gradient 2025 + Auto Sync Favorite (local ⇆ Firebase)
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/wonder_screen_wrapper.dart';
 
@@ -19,6 +21,8 @@ class _SettingScreenState extends State<SettingScreen>
   String _version = '';
   User? _user;
   bool _loading = false;
+  bool _syncing = false;
+  bool _synced = false;
   bool _phase = false;
 
   late final AnimationController _fadeCtrl;
@@ -33,6 +37,11 @@ class _SettingScreenState extends State<SettingScreen>
     super.initState();
     _loadAppInfo();
     _user = FirebaseAuth.instance.currentUser;
+
+    // 🔁 Tự động đồng bộ nếu đã đăng nhập
+    if (_user != null) {
+      Future.delayed(const Duration(milliseconds: 600), _autoSyncFavorites);
+    }
 
     _fadeCtrl =
     AnimationController(vsync: this, duration: const Duration(milliseconds: 800))
@@ -51,7 +60,6 @@ class _SettingScreenState extends State<SettingScreen>
     AnimationController(vsync: this, duration: const Duration(seconds: 8))
       ..repeat();
 
-    // 🌈 Auto gradient chuyển màu mượt
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 4));
       if (!mounted) return false;
@@ -73,8 +81,27 @@ class _SettingScreenState extends State<SettingScreen>
     setState(() => _version = '${info.version}+${info.buildNumber}');
   }
 
+  // ☁️ Đồng bộ tự động khi mở app
+  Future<void> _autoSyncFavorites() async {
+    setState(() => _syncing = true);
+    await _syncFavoritesToFirebase();
+    await _fetchFavoritesFromFirebase();
+    setState(() {
+      _syncing = false;
+      _synced = true;
+    });
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _synced = false);
+    });
+  }
+
+  // 🔐 Đăng nhập Google + Sync
   Future<void> _loginWithGoogle() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _synced = false;
+    });
+
     try {
       final googleSignIn = GoogleSignIn(scopes: ['email']);
       await googleSignIn.signOut();
@@ -85,19 +112,30 @@ class _SettingScreenState extends State<SettingScreen>
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      final userCred = await FirebaseAuth.instance.signInWithCredential(credential);
+
+      final userCred =
+      await FirebaseAuth.instance.signInWithCredential(credential);
       setState(() {
         _user = userCred.user;
-        _loading = false;
       });
+
+      // 🌈 Hiển thị tiến trình đồng bộ
+      await _autoSyncFavorites();
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('🌈 Xin chào ${_user?.displayName ?? "bạn"}!'),
+        content: Text('🌈 Xin chào ${_user?.displayName ?? "bạn"}! Đồng bộ thành công 💖'),
         backgroundColor: Colors.deepPurpleAccent.withOpacity(0.9),
       ));
     } catch (e) {
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _syncing = false;
+        _synced = false;
+      });
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('⚠️ Lỗi đăng nhập: $e')));
+    } finally {
+      setState(() => _loading = false);
     }
   }
 
@@ -106,9 +144,48 @@ class _SettingScreenState extends State<SettingScreen>
     await googleSignIn.signOut();
     await FirebaseAuth.instance.signOut();
     setState(() => _user = null);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('👋 Đã đăng xuất khỏi Wonder Space.')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('👋 Đã đăng xuất khỏi Wonder Space.')));
+  }
+
+  // ☁️ Upload favorites từ local → Firebase
+  Future<void> _syncFavoritesToFirebase() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final firestore = FirebaseFirestore.instance;
+    final favLocal = prefs.getStringList('favorites_local') ?? [];
+
+    final userRef = firestore.collection('favorites').doc(user.uid).collection('items');
+    final snapshot = await userRef.get();
+    final favOnline = snapshot.docs.map((d) => d.id).toList();
+
+    final merged = {...favLocal, ...favOnline}.toList();
+
+    for (final id in favLocal) {
+      if (!favOnline.contains(id)) {
+        await userRef.doc(id).set({'createdAt': FieldValue.serverTimestamp()});
+      }
+    }
+
+    await prefs.setStringList('favorites_local', merged);
+    debugPrint('☁️ Synced ${merged.length} favorites to Firebase.');
+  }
+
+  // ☁️ Tải favorites từ Firebase về local
+  Future<void> _fetchFavoritesFromFirebase() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final firestore = FirebaseFirestore.instance;
+    final snapshot =
+    await firestore.collection('favorites').doc(user.uid).collection('items').get();
+
+    final favIds = snapshot.docs.map((d) => d.id).toList();
+    await prefs.setStringList('favorites_local', favIds);
+    debugPrint('☁️ Downloaded ${favIds.length} favorites from Firebase.');
   }
 
   Future<void> _openPrivacyPolicy() async {
@@ -132,7 +209,6 @@ class _SettingScreenState extends State<SettingScreen>
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(seconds: 4),
-      onEnd: () => setState(() => _phase = !_phase),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: _phase
@@ -144,6 +220,7 @@ class _SettingScreenState extends State<SettingScreen>
       ),
       child: Stack(
         children: [
+          // ✨ Hiệu ứng nền shimmer
           AnimatedBuilder(
             animation: _shimmerCtrl,
             builder: (context, _) {
@@ -164,7 +241,7 @@ class _SettingScreenState extends State<SettingScreen>
             },
           ),
 
-          // 💫 Blur glass overlay nhẹ
+          // 💫 Blur toàn màn
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(color: Colors.white.withOpacity(0.06)),
@@ -224,6 +301,50 @@ class _SettingScreenState extends State<SettingScreen>
               ),
             ),
           ),
+
+          // 🌈 Hiển thị tiến trình đồng bộ
+          if (_syncing || _synced)
+            Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 400),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.6)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.deepPurple.withOpacity(0.25),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_syncing)
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    if (_synced)
+                      const Icon(Icons.check_circle_rounded,
+                          color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    Text(
+                      _syncing ? 'Đang đồng bộ yêu thích...' : 'Đồng bộ hoàn tất ✨',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           if (_loading)
             Container(
@@ -369,7 +490,9 @@ class _SettingScreenState extends State<SettingScreen>
               child: Text(
                 _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.3),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3),
               ),
             ),
           ),
@@ -386,8 +509,7 @@ class _SettingScreenState extends State<SettingScreen>
           style: const TextStyle(
               color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
       subtitle: Text(subtitle,
-          style:
-          TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
+          style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     );
