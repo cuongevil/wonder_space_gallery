@@ -7,11 +7,13 @@ import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'favorite_screen.dart';
-// ⚡️ Chỉ import đúng 3 màn hình chính
 import 'gallery_screen.dart';
 import 'setting_screen.dart';
 
-/// 🌈 MainScreen — Premium Glass TPBank 2025 (gradient liền mạch + ẩn BottomBar khi cuộn)
+/// 🌈 MainScreen — Premium Glass TPBank 2025
+/// - Hiệu ứng gradient tự đổi màu
+/// - Ẩn/hiện BottomBar khi cuộn
+/// - Fix: Không bị che bởi thanh điều hướng Android
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -33,7 +35,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
-    _listenAuthStateChanges(); // 🔁 Auto-sync favorite khi login/logout
+    _listenAuthStateChanges(); // 🔁 Theo dõi login/logout
 
     _navCtrl = AnimationController(
       vsync: this,
@@ -55,7 +57,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
     _iconCtrls[_currentIndex].forward();
 
-    // 🌈 Gradient auto switch
+    // 🌈 Tự động đổi pha gradient mỗi 4s
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 4));
       if (!mounted) return false;
@@ -64,11 +66,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// 🔁 Theo dõi đăng nhập / đăng xuất để auto-sync favorite
+  /// 🔁 Theo dõi đăng nhập / đăng xuất để auto-sync favorites
   void _listenAuthStateChanges() {
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
-        debugPrint('🔐 Đăng nhập thành công — tiến hành đồng bộ favorites...');
+        debugPrint('🔐 Đăng nhập thành công — đồng bộ favorites...');
         await _syncFavoritesOnLogin();
       } else {
         debugPrint('🚪 User đã đăng xuất.');
@@ -134,7 +136,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Fix: Khai báo rõ kiểu List<Widget>
     final List<Widget> screens = [
       GalleryScreen(onScrollDirectionChanged: _onScrollDirection),
       FavoriteScreen(onScrollDirectionChanged: _onScrollDirection),
@@ -142,7 +143,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     ];
 
     return Scaffold(
-      extendBody: true,
+      extendBody: true, // 👈 Cho phép gradient tràn ra sau BottomBar
       body: AnimatedContainer(
         duration: const Duration(seconds: 5),
         onEnd: () => setState(() => _phase = !_phase),
@@ -169,12 +170,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
       ),
 
-      // 🌈 Bottom Navigation — ẩn/hiện khi cuộn
+      // 🌈 Bottom Navigation — có hiệu ứng blur & padding dưới system bar
       bottomNavigationBar: SizeTransition(
         sizeFactor: _fadeAnim,
         axisAlignment: -1.0,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          // 👇 Chừa vùng safe-area dưới thanh điều hướng Android
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(context).padding.bottom + 10,
+          ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(28),
             child: BackdropFilter(

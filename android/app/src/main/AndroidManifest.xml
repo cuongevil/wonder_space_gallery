@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="wonderspace.gallery"
+        android:label="Wonder Space Thư Viện Ảnh"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
