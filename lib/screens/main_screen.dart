@@ -1,15 +1,17 @@
 import 'dart:ui';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:wonderspace.gallery/screens/favorite_screen.dart';
-import 'package:wonderspace.gallery/screens/gallery_screen.dart';
-import 'package:wonderspace.gallery/screens/setting_screen.dart';
+import 'favorite_screen.dart';
+// ⚡️ Chỉ import đúng 3 màn hình chính
+import 'gallery_screen.dart';
+import 'setting_screen.dart';
 
-/// 🌈 MainScreen — Premium Glass TPBank 2025 (gradient liền mạch)
+/// 🌈 MainScreen — Premium Glass TPBank 2025 (gradient liền mạch + ẩn BottomBar khi cuộn)
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -31,15 +33,26 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
 
-    _listenAuthStateChanges(); // 🔁 auto-sync khi login/logout
+    _listenAuthStateChanges(); // 🔁 Auto-sync favorite khi login/logout
 
-    _navCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
+    _navCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
     _fadeAnim = CurvedAnimation(parent: _navCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(begin: 1.0, end: 0.95)
-        .animate(CurvedAnimation(parent: _navCtrl, curve: Curves.easeInOut));
+    _scaleAnim = Tween<double>(
+      begin: 1.0,
+      end: 0.95,
+    ).animate(CurvedAnimation(parent: _navCtrl, curve: Curves.easeInOut));
     _navCtrl.value = 1.0;
 
-    _iconCtrls = List.generate(3, (_) => AnimationController(vsync: this, duration: const Duration(milliseconds: 400)));
+    _iconCtrls = List.generate(
+      3,
+      (_) => AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 400),
+      ),
+    );
     _iconCtrls[_currentIndex].forward();
 
     // 🌈 Gradient auto switch
@@ -67,14 +80,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   Future<void> _syncFavoritesOnLogin() async {
     final firestore = FirebaseFirestore.instance;
     final prefs = await SharedPreferences.getInstance();
-    List<String> favLocal = prefs.getStringList('favorites_local') ?? [];
-
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final userRef = firestore.collection('favorites').doc(user.uid).collection('items');
+    final favLocal = prefs.getStringList('favorites_local') ?? [];
+    final userRef = firestore
+        .collection('favorites')
+        .doc(user.uid)
+        .collection('items');
     final snapshot = await userRef.get();
     final favOnline = snapshot.docs.map((d) => d.id).toList();
+
     final merged = {...favLocal, ...favOnline}.toList();
 
     // Upload ảnh mới chưa có online
@@ -118,8 +134,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Cập nhật: Truyền onScrollDirection cho cả FavoriteScreen
-    final screens = [
+    // ✅ Fix: Khai báo rõ kiểu List<Widget>
+    final List<Widget> screens = [
       GalleryScreen(onScrollDirectionChanged: _onScrollDirection),
       FavoriteScreen(onScrollDirectionChanged: _onScrollDirection),
       const SettingScreen(),
@@ -141,13 +157,19 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         ),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 400),
-          transitionBuilder: (child, anim) =>
-              FadeTransition(opacity: anim, child: ScaleTransition(scale: _scaleAnim, child: child)),
-          child: IndexedStack(key: ValueKey(_currentIndex), index: _currentIndex, children: screens),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: ScaleTransition(scale: _scaleAnim, child: child),
+          ),
+          child: IndexedStack(
+            key: ValueKey(_currentIndex),
+            index: _currentIndex,
+            children: screens,
+          ),
         ),
       ),
 
-      // 🌈 Bottom Navigation — ẩn/hiện theo cuộn
+      // 🌈 Bottom Navigation — ẩn/hiện khi cuộn
       bottomNavigationBar: SizeTransition(
         sizeFactor: _fadeAnim,
         axisAlignment: -1.0,
@@ -162,15 +184,28 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: _phase
-                        ? [const Color(0xFF5E2CED).withOpacity(0.8), const Color(0xFFFF8B00).withOpacity(0.75)]
-                        : [const Color(0xFFA58CFF).withOpacity(0.75), const Color(0xFFFFC480).withOpacity(0.7)],
+                        ? [
+                            const Color(0xFF5E2CED).withOpacity(0.8),
+                            const Color(0xFFFF8B00).withOpacity(0.75),
+                          ]
+                        : [
+                            const Color(0xFFA58CFF).withOpacity(0.75),
+                            const Color(0xFFFFC480).withOpacity(0.7),
+                          ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.8),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 0.8,
+                  ),
                   boxShadow: [
-                    BoxShadow(color: Colors.deepPurple.withOpacity(0.15), blurRadius: 40, offset: const Offset(0, -4)),
+                    BoxShadow(
+                      color: Colors.deepPurple.withOpacity(0.15),
+                      blurRadius: 40,
+                      offset: const Offset(0, -4),
+                    ),
                   ],
                 ),
                 child: Padding(
@@ -194,7 +229,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Widget _buildNavItem(IconData icon, String label, int index) {
     final isActive = _currentIndex == index;
-    final anim = CurvedAnimation(parent: _iconCtrls[index], curve: Curves.easeOutBack);
+    final anim = CurvedAnimation(
+      parent: _iconCtrls[index],
+      curve: Curves.easeOutBack,
+    );
     final gradient = const LinearGradient(
       colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
       begin: Alignment.topLeft,
@@ -212,14 +250,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               boxShadow: isActive
-                  ? [BoxShadow(color: const Color(0xFF5E2CED).withOpacity(0.4), blurRadius: 18, spreadRadius: 1)]
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF5E2CED).withOpacity(0.4),
+                        blurRadius: 18,
+                        spreadRadius: 1,
+                      ),
+                    ]
                   : [],
             ),
             child: ScaleTransition(
               scale: Tween(begin: 1.0, end: 1.25).animate(anim),
               child: ShaderMask(
                 shaderCallback: (bounds) => gradient.createShader(bounds),
-                child: Icon(icon, size: isActive ? 28 : 24, color: isActive ? Colors.white : Colors.white70),
+                child: Icon(
+                  icon,
+                  size: isActive ? 28 : 24,
+                  color: isActive ? Colors.white : Colors.white70,
+                ),
               ),
             ),
           ),

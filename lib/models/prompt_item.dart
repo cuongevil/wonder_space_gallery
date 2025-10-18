@@ -28,13 +28,14 @@ class PromptItem {
     category: j['category']?.toString(),
   );
 
-  static List<PromptItem> listFromJsonString(String jsonStr) {
-    final data = jsonDecode(jsonStr);
-    if (data is Map && data['items'] is List) {
-      return (data['items'] as List)
-          .map((e) => PromptItem.fromJson(e))
-          .toList();
+  /// ✅ Hàm tiện ích để parse danh sách từ cache JSON
+  static List<PromptItem> parseListFromCache(String jsonString) {
+    try {
+      final data = Map<String, dynamic>.from(jsonDecode(jsonString));
+      final items = (data['items'] as List?) ?? [];
+      return items.map((e) => PromptItem.fromJson(e)).toList();
+    } catch (_) {
+      return [];
     }
-    return [];
   }
 }

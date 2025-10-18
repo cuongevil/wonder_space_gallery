@@ -285,17 +285,6 @@ class _SettingScreenState extends State<SettingScreen>
                         ],
                       ),
                     ),
-                    const SizedBox(height: 40),
-                    Center(
-                      child: Text(
-                        'Phiên bản $_version',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
