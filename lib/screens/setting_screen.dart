@@ -25,6 +25,8 @@ class _SettingScreenState extends State<SettingScreen>
   bool _synced = false;
   bool _phase = false;
 
+  static const _lastSyncKey = 'last_favorite_sync_date';
+
   late final AnimationController _fadeCtrl;
   late final AnimationController _glowCtrl;
   late final AnimationController _shimmerCtrl;
@@ -38,7 +40,7 @@ class _SettingScreenState extends State<SettingScreen>
     _loadAppInfo();
     _user = FirebaseAuth.instance.currentUser;
 
-    // 🔁 Tự động đồng bộ nếu đã đăng nhập
+    // 🔁 Tự động đồng bộ nếu đã đăng nhập và chưa sync hôm nay
     if (_user != null) {
       Future.delayed(const Duration(milliseconds: 600), _autoSyncFavorites);
     }
@@ -53,8 +55,8 @@ class _SettingScreenState extends State<SettingScreen>
     _glowCtrl =
     AnimationController(vsync: this, duration: const Duration(seconds: 3))
       ..repeat(reverse: true);
-    _glowAnim =
-        Tween<double>(begin: 0.4, end: 0.9).animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
+    _glowAnim = Tween<double>(begin: 0.4, end: 0.9)
+        .animate(CurvedAnimation(parent: _glowCtrl, curve: Curves.easeInOut));
 
     _shimmerCtrl =
     AnimationController(vsync: this, duration: const Duration(seconds: 8))
@@ -81,11 +83,19 @@ class _SettingScreenState extends State<SettingScreen>
     setState(() => _version = '${info.version}+${info.buildNumber}');
   }
 
-  // ☁️ Đồng bộ tự động khi mở app
+  // ☁️ Auto sync mỗi ngày 1 lần
   Future<void> _autoSyncFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final lastSync = prefs.getString(_lastSyncKey);
+
+    if (lastSync == _formatDate(today)) return; // Đã sync hôm nay
+
     setState(() => _syncing = true);
     await _syncFavoritesToFirebase();
     await _fetchFavoritesFromFirebase();
+    await prefs.setString(_lastSyncKey, _formatDate(today));
+
     setState(() {
       _syncing = false;
       _synced = true;
@@ -95,7 +105,44 @@ class _SettingScreenState extends State<SettingScreen>
     });
   }
 
-  // 🔐 Đăng nhập Google + Sync
+  String _formatDate(DateTime d) => '${d.year}-${d.month}-${d.day}';
+
+  // ☁️ Manual sync
+  Future<void> _manualSyncFavorites() async {
+    setState(() {
+      _syncing = true;
+      _synced = false;
+    });
+
+    try {
+      await _syncFavoritesToFirebase();
+      await _fetchFavoritesFromFirebase();
+
+      setState(() {
+        _syncing = false;
+        _synced = true;
+      });
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _synced = false);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('☁️ Đồng bộ hoàn tất!'),
+          backgroundColor: Colors.deepPurpleAccent,
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _syncing = false;
+        _synced = false;
+      });
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('⚠️ Lỗi đồng bộ: $e')));
+    }
+  }
+
+  // 🔐 Đăng nhập Google
   Future<void> _loginWithGoogle() async {
     setState(() {
       _loading = true;
@@ -115,23 +162,15 @@ class _SettingScreenState extends State<SettingScreen>
 
       final userCred =
       await FirebaseAuth.instance.signInWithCredential(credential);
-      setState(() {
-        _user = userCred.user;
-      });
+      setState(() => _user = userCred.user);
 
-      // 🌈 Hiển thị tiến trình đồng bộ
-      await _autoSyncFavorites();
+      await _manualSyncFavorites();
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('🌈 Xin chào ${_user?.displayName ?? "bạn"}! Đồng bộ thành công 💖'),
+        content: Text('🌈 Xin chào ${_user?.displayName ?? "bạn"}!'),
         backgroundColor: Colors.deepPurpleAccent.withOpacity(0.9),
       ));
     } catch (e) {
-      setState(() {
-        _loading = false;
-        _syncing = false;
-        _synced = false;
-      });
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('⚠️ Lỗi đăng nhập: $e')));
     } finally {
@@ -148,7 +187,7 @@ class _SettingScreenState extends State<SettingScreen>
         .showSnackBar(const SnackBar(content: Text('👋 Đã đăng xuất.')));
   }
 
-  // ☁️ Upload favorites từ local → Firebase
+  // ☁️ Upload local → Firebase
   Future<void> _syncFavoritesToFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -170,10 +209,9 @@ class _SettingScreenState extends State<SettingScreen>
     }
 
     await prefs.setStringList('favorites_local', merged);
-    debugPrint('☁️ Synced ${merged.length} favorites to Firebase.');
   }
 
-  // ☁️ Tải favorites từ Firebase về local
+  // ☁️ Download Firebase → local
   Future<void> _fetchFavoritesFromFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -185,7 +223,6 @@ class _SettingScreenState extends State<SettingScreen>
 
     final favIds = snapshot.docs.map((d) => d.id).toList();
     await prefs.setStringList('favorites_local', favIds);
-    debugPrint('☁️ Downloaded ${favIds.length} favorites from Firebase.');
   }
 
   Future<void> _openPrivacyPolicy() async {
@@ -220,7 +257,7 @@ class _SettingScreenState extends State<SettingScreen>
       ),
       child: Stack(
         children: [
-          // ✨ Hiệu ứng nền shimmer
+          // ✨ Nền shimmer
           AnimatedBuilder(
             animation: _shimmerCtrl,
             builder: (context, _) {
@@ -241,7 +278,7 @@ class _SettingScreenState extends State<SettingScreen>
             },
           ),
 
-          // 💫 Blur toàn màn
+          // 💫 Blur nền
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(color: Colors.white.withOpacity(0.06)),
@@ -355,8 +392,7 @@ class _SettingScreenState extends State<SettingScreen>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color:
-                  Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.5),
+                  color: Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.5),
                   blurRadius: 28 * _glowAnim.value,
                   spreadRadius: 2 * _glowAnim.value,
                 ),
@@ -393,7 +429,8 @@ class _SettingScreenState extends State<SettingScreen>
                   _user != null
                       ? 'Cảm ơn bạn đã đồng hành 💫'
                       : 'Đăng nhập để lưu ảnh yêu thích!',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
+                  style:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
                 ),
               ],
             ),
@@ -457,33 +494,84 @@ class _SettingScreenState extends State<SettingScreen>
         ),
         const SizedBox(height: 12),
         Center(
-          child: GestureDetector(
-            onTap: _user == null ? _loginWithGoogle : _logout,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.deepPurple.withOpacity(0.25),
-                    blurRadius: 18,
-                    offset: const Offset(0, 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 🌈 Nút Đồng bộ ngay ☁️ — chỉ hiển thị khi đã đăng nhập
+              if (_user != null) ...[
+                const SizedBox(width: 10),
+                AnimatedBuilder(
+                  animation: _glowAnim,
+                  builder: (_, __) => GestureDetector(
+                    onTap: _manualSyncFavorites,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white.withOpacity(0.25)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.deepPurpleAccent
+                                .withOpacity(_glowAnim.value * 0.6),
+                            blurRadius: 22 * _glowAnim.value,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.sync_rounded,
+                              color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Đồng bộ ngay',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ],
+                ),
+              ],
+
+              // 🌈 Nút Đăng nhập / Đăng xuất
+              GestureDetector(
+                onTap: _user == null ? _loginWithGoogle : _logout,
+                child: Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.deepPurple.withOpacity(0.25),
+                        blurRadius: 18,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
               ),
-              child: Text(
-                _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.3),
-              ),
-            ),
+            ],
           ),
         ),
       ],

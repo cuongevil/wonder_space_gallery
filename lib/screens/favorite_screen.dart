@@ -1,12 +1,15 @@
-// 💖 FavoriteScreen — TPBank Mobile 2025 (Glass + Gradient + Drag to Close + Glow Buttons)
+// 💖 FavoriteScreen — TPBank Mobile 2025 (Glass + Gradient + Drag to Close + Glow Buttons + BannerAd)
 import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ad_helper.dart';
 import '../models/prompt_item.dart';
 import '../services/firebase_image_resolver.dart';
 import '../widgets/empty_state.dart';
@@ -29,23 +32,45 @@ class _FavoriteScreenState extends State<FavoriteScreen>
   List<PromptItem> _all = [];
   List<PromptItem> _filtered = [];
   bool _loading = true;
-  bool _refreshing = false;
 
   late final AnimationController _animCtrl;
   late final Animation<double> _fadeAnim;
   late final Animation<double> _scaleAnim;
 
+  BannerAd? _bannerAd;
+  bool _isBannerLoaded = false;
+
   @override
   void initState() {
     super.initState();
-    _animCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(begin: 0.97, end: 1)
-        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    _scaleAnim = Tween<double>(
+      begin: 0.97,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
 
     _scrollCtrl.addListener(_onScroll);
     _loadFavorites();
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: AdHelper.bannerAdUnitId,
+      size: AdSize.mediumRectangle,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) => setState(() => _isBannerLoaded = true),
+        onAdFailedToLoad: (ad, err) {
+          ad.dispose();
+          _isBannerLoaded = false;
+        },
+      ),
+    )..load();
   }
 
   @override
@@ -53,6 +78,7 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     _scrollCtrl.dispose();
     _searchCtrl.dispose();
     _animCtrl.dispose();
+    _bannerAd?.dispose();
     super.dispose();
   }
 
@@ -68,9 +94,9 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     final cachedJson = prefs.getString('prompts_cache');
 
     if (cachedJson != null) {
-      final items = PromptItem.parseListFromCache(cachedJson)
-          .where((p) => favIds.contains(p.id))
-          .toList();
+      final items = PromptItem.parseListFromCache(
+        cachedJson,
+      ).where((p) => favIds.contains(p.id)).toList();
       setState(() {
         _all = items;
         _filtered = items;
@@ -90,8 +116,11 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     } else {
       setState(() {
         _filtered = _all
-            .where((it) =>
-            (it.title + it.prompt + it.tags.join(' ')).toLowerCase().contains(q))
+            .where(
+              (it) => (it.title + it.prompt + it.tags.join(' '))
+                  .toLowerCase()
+                  .contains(q),
+            )
             .toList();
       });
     }
@@ -106,8 +135,9 @@ class _FavoriteScreenState extends State<FavoriteScreen>
       _all.removeWhere((p) => p.id == id);
       _filtered.removeWhere((p) => p.id == id);
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('🗑️ Đã xoá khỏi yêu thích')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('🗑️ Đã xoá khỏi yêu thích')));
   }
 
   @override
@@ -146,8 +176,7 @@ class _FavoriteScreenState extends State<FavoriteScreen>
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.2),
           borderRadius: BorderRadius.circular(24),
-          border:
-          Border.all(color: Colors.white.withOpacity(0.4), width: 0.8),
+          border: Border.all(color: Colors.white.withOpacity(0.4), width: 0.8),
         ),
         child: Row(
           children: [
@@ -171,8 +200,11 @@ class _FavoriteScreenState extends State<FavoriteScreen>
                   _searchCtrl.clear();
                   _applyFilter();
                 },
-                child: const Icon(Icons.clear_rounded,
-                    color: Colors.white70, size: 20),
+                child: const Icon(
+                  Icons.clear_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
               ),
           ],
         ),
@@ -189,27 +221,43 @@ class _FavoriteScreenState extends State<FavoriteScreen>
         child: ScaleTransition(
           scale: _scaleAnim,
           child: _filtered.isEmpty
-              ? const EmptyState(message: 'Chưa có ảnh nào trong mục yêu thích 💫')
-              : GridView.builder(
-            controller: _scrollCtrl,
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
-            gridDelegate:
-            const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 0.9,
-            ),
-            itemCount: _filtered.length,
-            itemBuilder: (_, i) {
-              final item = _filtered[i];
-              return _FavoriteCard(
-                item: item,
-                onRemove: () => _removeFavorite(item.id),
-              );
-            },
-          ),
+              ? const EmptyState(
+                  message: 'Chưa có ảnh nào trong mục yêu thích 💫',
+                )
+              : ListView(
+                  controller: _scrollCtrl,
+                  physics: const BouncingScrollPhysics(),
+                  children: [
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 0.9,
+                          ),
+                      itemCount: _filtered.length,
+                      itemBuilder: (_, i) {
+                        final item = _filtered[i];
+                        return _FavoriteCard(
+                          item: item,
+                          onRemove: () => _removeFavorite(item.id),
+                        );
+                      },
+                    ),
+                    if (_isBannerLoaded)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Center(child: AdWidget(ad: _bannerAd!)),
+                      ),
+                  ],
+                ),
         ),
       ),
     ),
@@ -236,7 +284,8 @@ class _FavoriteCard extends StatelessWidget {
               builder: (_, snap) {
                 if (!snap.hasData) {
                   return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2));
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
                 }
                 return CachedNetworkImage(
                   imageUrl: snap.data!,
@@ -267,9 +316,10 @@ class _FavoriteCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ),
@@ -284,8 +334,11 @@ class _FavoriteCard extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   padding: const EdgeInsets.all(6),
-                  child: const Icon(Icons.delete_rounded,
-                      color: Colors.white, size: 18),
+                  child: const Icon(
+                    Icons.delete_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
               ),
             ),
@@ -295,7 +348,6 @@ class _FavoriteCard extends StatelessWidget {
     );
   }
 
-  // 🌈 Popup chi tiết có thể vuốt xuống để đóng + scroll riêng prompt + nút cố định
   void _showDetail(BuildContext context) {
     double dragOffset = 0.0;
     showGeneralDialog(
@@ -306,7 +358,10 @@ class _FavoriteCard extends StatelessWidget {
       transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         return StatefulBuilder(
           builder: (context, setState) {
             return GestureDetector(
@@ -314,8 +369,10 @@ class _FavoriteCard extends StatelessWidget {
               onVerticalDragUpdate: (details) =>
                   setState(() => dragOffset += details.primaryDelta ?? 0),
               onVerticalDragEnd: (_) {
-                if (dragOffset > 100) Navigator.of(context).pop();
-                else setState(() => dragOffset = 0);
+                if (dragOffset > 100)
+                  Navigator.of(context).pop();
+                else
+                  setState(() => dragOffset = 0);
               },
               child: Transform.translate(
                 offset: Offset(0, dragOffset * 0.4),
@@ -340,6 +397,7 @@ class _FavoriteCard extends StatelessWidget {
 
 class _FavoriteDetailDialog extends StatelessWidget {
   final PromptItem item;
+
   const _FavoriteDetailDialog({required this.item});
 
   @override
@@ -375,21 +433,24 @@ class _FavoriteDetailDialog extends StatelessWidget {
                       child: Text(
                         item.title,
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded,
-                          color: Colors.white, size: 22),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
               ),
 
-              // Ảnh
               FutureBuilder<String>(
                 future: resolveImage(item.image),
                 builder: (_, snap) {
@@ -412,10 +473,12 @@ class _FavoriteDetailDialog extends StatelessWidget {
                 },
               ),
 
-              // Prompt (scroll riêng)
               Expanded(
                 child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.7),
@@ -427,16 +490,16 @@ class _FavoriteDetailDialog extends StatelessWidget {
                       child: Text(
                         item.prompt,
                         style: const TextStyle(
-                            fontSize: 15,
-                            color: Color(0xFF3B2667),
-                            height: 1.8),
+                          fontSize: 15,
+                          color: Color(0xFF3B2667),
+                          height: 1.8,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
 
-              // Nút cố định dưới
               SafeArea(
                 top: false,
                 child: Padding(
@@ -450,7 +513,9 @@ class _FavoriteDetailDialog extends StatelessWidget {
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: item.prompt));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('✨ Đã sao chép prompt!')),
+                            const SnackBar(
+                              content: Text('✨ Đã sao chép prompt!'),
+                            ),
                           );
                         },
                       ),
@@ -478,8 +543,11 @@ class _GlassButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _GlassButton(
-      {required this.icon, required this.label, required this.onTap});
+  const _GlassButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -506,11 +574,14 @@ class _GlassButton extends StatelessWidget {
         children: [
           Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 6),
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     ),

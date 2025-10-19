@@ -1,7 +1,7 @@
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../ad_helper.dart';
+import 'ad_helper.dart';
 
 /// Quản lý App Open Ad hiển thị 1 lần/ngày.
 class AppOpenAdManager {

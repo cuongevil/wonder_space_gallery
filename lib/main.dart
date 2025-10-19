@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:wonderspace.gallery/screens/main_screen.dart';
 
+import 'app_open_ad_manager.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -41,6 +42,8 @@ Future<void> _initAdMob() async {
         'Latency: ${entry.value.latency} ms',
       );
     }
+
+    AppOpenAdManager.showAdIfAllowed(); // 🚀 Hiển thị quảng cáo AppOpen mỗi ngày 1 lần
 
     debugPrint('✅ [AdMob] SDK initialized successfully');
   } catch (e, st) {

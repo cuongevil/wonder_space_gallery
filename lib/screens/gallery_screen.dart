@@ -10,16 +10,18 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ad_helper.dart';
 import '../models/prompt_item.dart';
 import '../services/firebase_image_resolver.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/wonder_screen_wrapper.dart';
 
-/// 💎 GalleryScreen — Glass Blur, Gradient, Hero Detail, Realtime Favorite Sync
+/// 💎 GalleryScreen — Glass Blur, Gradient, Hero Detail, Realtime Favorite Sync + Banner Ads
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<ScrollDirection>? onScrollDirectionChanged;
 
@@ -46,6 +48,10 @@ class _GalleryScreenState extends State<GalleryScreen>
   late final Animation<double> _fadeAnim;
   late final Animation<double> _scaleAnim;
 
+  // 🪄 BannerAd (hiển thị sau mỗi 10 ảnh)
+  BannerAd? _bannerAd;
+  bool _isBannerLoaded = false;
+
   final List<String> _searchHints = const [
     'Giáng Sinh pastel',
     'Bé gái Việt Nam',
@@ -57,14 +63,36 @@ class _GalleryScreenState extends State<GalleryScreen>
   @override
   void initState() {
     super.initState();
-    _animCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(begin: 0.97, end: 1)
-        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    _scaleAnim = Tween<double>(
+      begin: 0.97,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
 
     _loadTrending();
     _scrollCtrl.addListener(_onScroll);
+
+    // 🔧 Load BannerAd
+    _loadBannerAd();
+  }
+
+  void _loadBannerAd() {
+    _bannerAd = BannerAd(
+      adUnitId: AdHelper.bannerAdUnitId,
+      size: AdSize.mediumRectangle,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) => setState(() => _isBannerLoaded = true),
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          _isBannerLoaded = false;
+        },
+      ),
+    )..load();
   }
 
   @override
@@ -72,6 +100,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     _animCtrl.dispose();
     _scrollCtrl.dispose();
     _searchCtrl.dispose();
+    _bannerAd?.dispose();
     super.dispose();
   }
 
@@ -92,7 +121,8 @@ class _GalleryScreenState extends State<GalleryScreen>
       final ref = FirebaseStorage.instance.ref('prompts/prompts_trending.json');
       final meta = await ref.getMetadata();
       final remoteUpdated = meta.updated?.toIso8601String() ?? '';
-      final shouldReload = forceRefresh ||
+      final shouldReload =
+          forceRefresh ||
           cachedJson == null ||
           prefs.getString('prompts_meta') != remoteUpdated;
 
@@ -121,7 +151,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   void _parseData(Map<String, dynamic> data) {
     final items =
         (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ??
-            [];
+        [];
     items.sort((a, b) => b.id.compareTo(a.id));
     _all = items;
     _visible = _all.take(_batchSize).toList();
@@ -157,8 +187,11 @@ class _GalleryScreenState extends State<GalleryScreen>
       return;
     }
     final results = _all
-        .where((it) =>
-        (it.title + it.prompt + it.tags.join(' ')).toLowerCase().contains(q))
+        .where(
+          (it) => (it.title + it.prompt + it.tags.join(' '))
+              .toLowerCase()
+              .contains(q),
+        )
         .toList();
     setState(() => _visible = results.take(_batchSize).toList());
   }
@@ -202,10 +235,7 @@ class _GalleryScreenState extends State<GalleryScreen>
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.2),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.4),
-            width: 0.8,
-          ),
+          border: Border.all(color: Colors.white.withOpacity(0.4), width: 0.8),
         ),
         child: Row(
           children: [
@@ -229,8 +259,11 @@ class _GalleryScreenState extends State<GalleryScreen>
                   _searchCtrl.clear();
                   _applyFilters();
                 },
-                child: const Icon(Icons.clear_rounded,
-                    color: Colors.white70, size: 20),
+                child: const Icon(
+                  Icons.clear_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
               ),
           ],
         ),
@@ -253,12 +286,16 @@ class _GalleryScreenState extends State<GalleryScreen>
             children: [
               _visible.isEmpty
                   ? const EmptyState()
-                  : _GalleryGrid(items: _visible),
+                  : _GalleryGrid(
+                      items: _visible,
+                      bannerAd: _isBannerLoaded ? _bannerAd : null,
+                    ),
               if (_loadingMore)
                 const Padding(
                   padding: EdgeInsets.all(20),
-                  child:
-                  Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
             ],
           ),
@@ -268,29 +305,52 @@ class _GalleryScreenState extends State<GalleryScreen>
   );
 }
 
-/// 🖼️ Grid hiển thị ảnh
+/// 🖼️ Grid hiển thị ảnh + Banner quảng cáo sau mỗi 10 ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
-  const _GalleryGrid({required this.items});
+  final BannerAd? bannerAd;
+
+  const _GalleryGrid({required this.items, this.bannerAd});
 
   @override
-  Widget build(BuildContext context) => GridView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 2,
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: .9,
-    ),
-    itemCount: items.length,
-    itemBuilder: (_, i) => _GalleryCard(item: items[i]),
-  );
+  Widget build(BuildContext context) {
+    final totalCount = bannerAd == null
+        ? items.length
+        : items.length + items.length ~/ 10;
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: .9,
+      ),
+      itemCount: totalCount,
+      itemBuilder: (_, index) {
+        // Chèn BannerAd vào mỗi vị trí thứ 10 (trừ index 0)
+        if (bannerAd != null && index != 0 && index % 10 == 0) {
+          return Container(
+            alignment: Alignment.center,
+            margin: const EdgeInsets.all(4),
+            child: AdWidget(ad: bannerAd!),
+          );
+        }
+
+        // Tính index thực trong danh sách ảnh khi có slot banner
+        final realIndex = bannerAd == null ? index : index - (index ~/ 10);
+
+        return _GalleryCard(item: items[realIndex]);
+      },
+    );
+  }
 }
 
 /// 📸 Thẻ ảnh + nút yêu thích + popup chi tiết
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
+
   const _GalleryCard({required this.item});
 
   @override
@@ -311,8 +371,10 @@ class _GalleryCardState extends State<_GalleryCard>
   @override
   void initState() {
     super.initState();
-    _heartCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _heartCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     _initFavoriteListener();
   }
 
@@ -335,8 +397,10 @@ class _GalleryCardState extends State<_GalleryCard>
       return;
     }
 
-    final userRef =
-    _firestore.collection('favorites').doc(user.uid).collection('items');
+    final userRef = _firestore
+        .collection('favorites')
+        .doc(user.uid)
+        .collection('items');
     _favSubscription = userRef.snapshots().listen((snapshot) async {
       final favOnline = snapshot.docs.map((d) => d.id).toList();
       final favLocal = prefs.getStringList('favorites_local') ?? [];
@@ -399,7 +463,8 @@ class _GalleryCardState extends State<_GalleryCard>
               builder: (_, snap) {
                 if (!snap.hasData) {
                   return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2));
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
                 }
                 return Hero(
                   tag: widget.item.id,
@@ -465,7 +530,10 @@ class _GalleryCardState extends State<_GalleryCard>
       transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return GestureDetector(
@@ -473,8 +541,10 @@ class _GalleryCardState extends State<_GalleryCard>
               onVerticalDragUpdate: (details) =>
                   setDialogState(() => dragOffset += details.primaryDelta ?? 0),
               onVerticalDragEnd: (_) {
-                if (dragOffset > 100) Navigator.of(context).pop();
-                else setDialogState(() => dragOffset = 0);
+                if (dragOffset > 100)
+                  Navigator.of(context).pop();
+                else
+                  setDialogState(() => dragOffset = 0);
               },
               child: Transform.translate(
                 offset: Offset(0, dragOffset * 0.4),
@@ -556,8 +626,11 @@ class _DetailDialog extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded,
-                          color: Colors.white, size: 22),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
@@ -582,13 +655,18 @@ class _DetailDialog extends StatelessWidget {
               else
                 const Padding(
                   padding: EdgeInsets.all(48),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
 
               // Prompt (phần này cuộn, độc lập với gesture kéo-đóng)
               Expanded(
                 child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.7),
@@ -630,9 +708,11 @@ class _DetailDialog extends StatelessWidget {
                               await toggleFavorite();
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text(isFavorite
-                                      ? '❌ Đã xóa khỏi yêu thích'
-                                      : '💖 Đã thêm vào yêu thích'),
+                                  content: Text(
+                                    isFavorite
+                                        ? '❌ Đã xóa khỏi yêu thích'
+                                        : '💖 Đã thêm vào yêu thích',
+                                  ),
                                 ),
                               );
                             },
@@ -645,14 +725,17 @@ class _DetailDialog extends StatelessWidget {
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: item.prompt));
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('✨ Đã sao chép prompt!')),
+                            const SnackBar(
+                              content: Text('✨ Đã sao chép prompt!'),
+                            ),
                           );
                         },
                       ),
                       _GlassButton(
                         icon: Icons.share_rounded,
                         label: 'Chia sẻ',
-                        onTap: () => Share.share('${item.title}\n\n${item.prompt}'),
+                        onTap: () =>
+                            Share.share('${item.title}\n\n${item.prompt}'),
                       ),
                     ],
                   ),
