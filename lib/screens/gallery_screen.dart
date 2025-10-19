@@ -57,15 +57,11 @@ class _GalleryScreenState extends State<GalleryScreen>
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
+    _animCtrl =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(
-      begin: 0.97,
-      end: 1,
-    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    _scaleAnim = Tween<double>(begin: 0.97, end: 1)
+        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
 
     _loadTrending();
     _scrollCtrl.addListener(_onScroll);
@@ -79,7 +75,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     super.dispose();
   }
 
-  // 📦 Load dữ liệu JSON trending từ Firebase Storage
+  /// 📦 Load dữ liệu JSON trending từ Firebase Storage
   Future<void> _loadTrending({bool forceRefresh = false}) async {
     setState(() {
       _loading = true;
@@ -96,8 +92,7 @@ class _GalleryScreenState extends State<GalleryScreen>
       final ref = FirebaseStorage.instance.ref('prompts/prompts_trending.json');
       final meta = await ref.getMetadata();
       final remoteUpdated = meta.updated?.toIso8601String() ?? '';
-      final shouldReload =
-          forceRefresh ||
+      final shouldReload = forceRefresh ||
           cachedJson == null ||
           prefs.getString('prompts_meta') != remoteUpdated;
 
@@ -126,7 +121,7 @@ class _GalleryScreenState extends State<GalleryScreen>
   void _parseData(Map<String, dynamic> data) {
     final items =
         (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ??
-        [];
+            [];
     items.sort((a, b) => b.id.compareTo(a.id));
     _all = items;
     _visible = _all.take(_batchSize).toList();
@@ -136,7 +131,6 @@ class _GalleryScreenState extends State<GalleryScreen>
   void _onScroll() {
     final direction = _scrollCtrl.position.userScrollDirection;
     widget.onScrollDirectionChanged?.call(direction);
-
     if (_scrollCtrl.position.pixels >=
         _scrollCtrl.position.maxScrollExtent - 200) {
       _loadMore();
@@ -163,11 +157,8 @@ class _GalleryScreenState extends State<GalleryScreen>
       return;
     }
     final results = _all
-        .where(
-          (it) => (it.title + it.prompt + it.tags.join(' '))
-              .toLowerCase()
-              .contains(q),
-        )
+        .where((it) =>
+        (it.title + it.prompt + it.tags.join(' ')).toLowerCase().contains(q))
         .toList();
     setState(() => _visible = results.take(_batchSize).toList());
   }
@@ -190,105 +181,9 @@ class _GalleryScreenState extends State<GalleryScreen>
             child: Column(
               children: [
                 const SizedBox(height: 8),
-
-                // 🔍 Search bar (glass blur)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.4),
-                          width: 0.8,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.search_rounded,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _searchCtrl,
-                              onChanged: (_) => _applyFilters(),
-                              style: const TextStyle(
-                                fontSize: 15,
-                                color: Colors.white,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: 'Tìm kiếm $randomHint...',
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withOpacity(0.85),
-                                ),
-                                border: InputBorder.none,
-                              ),
-                            ),
-                          ),
-                          if (_searchCtrl.text.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                _searchCtrl.clear();
-                                _applyFilters();
-                              },
-                              child: const Icon(
-                                Icons.clear_rounded,
-                                color: Colors.white70,
-                                size: 20,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                _buildSearchBar(randomHint),
                 const SizedBox(height: 16),
-
-                // 🌈 Gallery grid
-                Expanded(
-                  child: RefreshIndicator(
-                    onRefresh: () => _loadTrending(forceRefresh: true),
-                    color: Colors.deepPurpleAccent,
-                    child: FadeTransition(
-                      opacity: _fadeAnim,
-                      child: ScaleTransition(
-                        scale: _scaleAnim,
-                        child: ListView(
-                          controller: _scrollCtrl,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          physics: const BouncingScrollPhysics(),
-                          children: [
-                            _visible.isEmpty
-                                ? const EmptyState()
-                                : _GalleryGrid(items: _visible),
-                            if (_loadingMore)
-                              const Padding(
-                                padding: EdgeInsets.all(20),
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                _buildGallery(),
               ],
             ),
           ),
@@ -296,11 +191,86 @@ class _GalleryScreenState extends State<GalleryScreen>
       ),
     );
   }
+
+  Widget _buildSearchBar(String hint) => ClipRRect(
+    borderRadius: BorderRadius.circular(24),
+    child: BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.4),
+            width: 0.8,
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.search_rounded, color: Colors.white, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                onChanged: (_) => _applyFilters(),
+                style: const TextStyle(fontSize: 15, color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Tìm kiếm $hint...',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            if (_searchCtrl.text.isNotEmpty)
+              GestureDetector(
+                onTap: () {
+                  _searchCtrl.clear();
+                  _applyFilters();
+                },
+                child: const Icon(Icons.clear_rounded,
+                    color: Colors.white70, size: 20),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _buildGallery() => Expanded(
+    child: RefreshIndicator(
+      onRefresh: () => _loadTrending(forceRefresh: true),
+      color: Colors.deepPurpleAccent,
+      child: FadeTransition(
+        opacity: _fadeAnim,
+        child: ScaleTransition(
+          scale: _scaleAnim,
+          child: ListView(
+            controller: _scrollCtrl,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            physics: const BouncingScrollPhysics(),
+            children: [
+              _visible.isEmpty
+                  ? const EmptyState()
+                  : _GalleryGrid(items: _visible),
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child:
+                  Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
+/// 🖼️ Grid hiển thị ảnh
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
-
   const _GalleryGrid({required this.items});
 
   @override
@@ -318,9 +288,9 @@ class _GalleryGrid extends StatelessWidget {
   );
 }
 
+/// 📸 Thẻ ảnh + nút yêu thích + popup chi tiết
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
-
   const _GalleryCard({required this.item});
 
   @override
@@ -335,13 +305,14 @@ class _GalleryCardState extends State<_GalleryCard>
   late AnimationController _heartCtrl;
   StreamSubscription? _favSubscription;
 
+  /// Dùng cho dialog để update nhãn "Đã thích"/"Yêu thích" theo thời gian thực
+  final ValueNotifier<bool> _favVN = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
-    _heartCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
+    _heartCtrl =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _initFavoriteListener();
   }
 
@@ -349,31 +320,33 @@ class _GalleryCardState extends State<_GalleryCard>
   void dispose() {
     _favSubscription?.cancel();
     _heartCtrl.dispose();
+    _favVN.dispose();
     super.dispose();
   }
 
-  void _initFavoriteListener() async {
+  Future<void> _initFavoriteListener() async {
     final prefs = await SharedPreferences.getInstance();
     final user = _auth.currentUser;
     if (user == null) {
       final favLocal = prefs.getStringList('favorites_local') ?? [];
-      setState(() => _isFavorite = favLocal.contains(widget.item.id));
+      final v = favLocal.contains(widget.item.id);
+      setState(() => _isFavorite = v);
+      _favVN.value = v;
       return;
     }
 
-    final userRef = _firestore
-        .collection('favorites')
-        .doc(user.uid)
-        .collection('items');
+    final userRef =
+    _firestore.collection('favorites').doc(user.uid).collection('items');
     _favSubscription = userRef.snapshots().listen((snapshot) async {
       final favOnline = snapshot.docs.map((d) => d.id).toList();
       final favLocal = prefs.getStringList('favorites_local') ?? [];
       final merged = {...favLocal, ...favOnline}.toList();
       await prefs.setStringList('favorites_local', merged);
-
       final newFav = merged.contains(widget.item.id);
-      if (newFav != _isFavorite && mounted)
-        setState(() => _isFavorite = newFav);
+      if (mounted) {
+        if (newFav != _isFavorite) setState(() => _isFavorite = newFav);
+        _favVN.value = newFav;
+      }
     });
   }
 
@@ -383,6 +356,7 @@ class _GalleryCardState extends State<_GalleryCard>
     final user = _auth.currentUser;
 
     setState(() => _isFavorite = !_isFavorite);
+    _favVN.value = _isFavorite;
     _heartCtrl.forward(from: 0);
 
     if (_isFavorite) {
@@ -410,114 +384,71 @@ class _GalleryCardState extends State<_GalleryCard>
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: Stack(
-        children: [
-          InkWell(
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    borderRadius: BorderRadius.circular(20),
+    child: Stack(
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _showDetail(context),
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            onTap: () => _showDetail(context),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  FutureBuilder<String>(
-                    future: resolveImage(widget.item.image),
-                    builder: (_, snap) {
-                      if (!snap.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      }
-                      return Hero(
-                        tag: widget.item.id,
-                        child: CachedNetworkImage(
-                          imageUrl: snap.data!,
-                          fit: BoxFit.cover,
-                        ),
-                      );
-                    },
+            child: FutureBuilder<String>(
+              future: resolveImage(widget.item.image),
+              builder: (_, snap) {
+                if (!snap.hasData) {
+                  return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2));
+                }
+                return Hero(
+                  tag: widget.item.id,
+                  child: CachedNetworkImage(
+                    imageUrl: snap.data!,
+                    fit: BoxFit.cover,
                   ),
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.3),
-                          ],
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      child: Text(
-                        widget.item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
           ),
-
-          // ❤️ Favorite button
-          Positioned(
-            top: 8,
-            right: 8,
-            child: GestureDetector(
-              onTap: _toggleFavorite,
-              behavior: HitTestBehavior.opaque,
-              child: ScaleTransition(
-                scale: Tween(begin: 1.0, end: 1.3).animate(
-                  CurvedAnimation(parent: _heartCtrl, curve: Curves.elasticOut),
+        ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            onTap: _toggleFavorite,
+            behavior: HitTestBehavior.opaque,
+            child: ScaleTransition(
+              scale: Tween(begin: 1.0, end: 1.3).animate(
+                CurvedAnimation(parent: _heartCtrl, curve: Curves.elasticOut),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.25),
+                  shape: BoxShape.circle,
                 ),
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.25),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isFavorite
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    color: _isFavorite
-                        ? Colors.pinkAccent
-                        : Colors.white.withOpacity(0.9),
-                    size: 22,
-                  ),
+                child: Icon(
+                  _isFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: _isFavorite
+                      ? Colors.pinkAccent
+                      : Colors.white.withOpacity(0.9),
+                  size: 22,
                 ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 
-  // 🌈 Popup chi tiết ảnh (vuốt xuống để đóng)
+  /// 💫 Popup chi tiết có thể vuốt xuống để đóng + chống tràn, nút cố định dưới
   Future<void> _showDetail(BuildContext context) async {
     double dragOffset = 0.0;
     String? resolvedUrl;
-
     try {
       resolvedUrl = await resolveImage(widget.item.image);
     } catch (e) {
@@ -530,176 +461,212 @@ class _GalleryCardState extends State<_GalleryCard>
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Ảnh chi tiết',
-      useRootNavigator: true,
-      barrierColor: Colors.black.withOpacity(0.3),
-      transitionDuration: const Duration(milliseconds: 300),
+      barrierColor: Colors.black.withOpacity(0.4),
+      transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
         final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
-        return StatefulBuilder(builder: (context, setState) {
-          return GestureDetector(
-            onVerticalDragUpdate: (details) =>
-                setState(() => dragOffset += details.primaryDelta ?? 0),
-            onVerticalDragEnd: (_) {
-              if (dragOffset > 100) Navigator.of(context).pop();
-              else setState(() => dragOffset = 0);
-            },
-            child: Transform.translate(
-              offset: Offset(0, dragOffset * 0.4),
-              child: Opacity(
-                opacity: (1 - (dragOffset / 200)).clamp(0.0, 1.0),
-                child: ScaleTransition(
-                  scale: Tween(begin: 0.96, end: 1.0).animate(curved),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-                    child: Dialog(
-                      insetPadding: const EdgeInsets.all(16),
-                      backgroundColor: Colors.white.withOpacity(0.9),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        side: BorderSide(
-                            color: Colors.white.withOpacity(0.4), width: 1),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) =>
+                  setDialogState(() => dragOffset += details.primaryDelta ?? 0),
+              onVerticalDragEnd: (_) {
+                if (dragOffset > 100) Navigator.of(context).pop();
+                else setDialogState(() => dragOffset = 0);
+              },
+              child: Transform.translate(
+                offset: Offset(0, dragOffset * 0.4),
+                child: Opacity(
+                  opacity: (1 - (dragOffset / 200)).clamp(0.0, 1.0),
+                  child: FadeTransition(
+                    opacity: curved,
+                    child: ScaleTransition(
+                      scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+                      child: _DetailDialog(
+                        item: widget.item,
+                        favNotifier: _favVN,
+                        toggleFavorite: _toggleFavorite,
+                        resolvedUrl: resolvedUrl,
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Header
-                            Container(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                              decoration: const BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(widget.item.title,
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 16)),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.close_rounded,
-                                        color: Colors.white, size: 22),
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(),
-                                  ),
-                                ],
-                              ),
-                            ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
 
-                            // Image
-                            if (resolvedUrl != null)
-                              Padding(
-                                padding:
-                                const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                                child: Hero(
-                                  tag: widget.item.id,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(20),
-                                    child: CachedNetworkImage(
-                                      imageUrl: resolvedUrl,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            else
-                              const Padding(
-                                padding: EdgeInsets.all(48),
-                                child: Center(
-                                    child: CircularProgressIndicator(strokeWidth: 2)),
-                              ),
+class _DetailDialog extends StatelessWidget {
+  final PromptItem item;
+  final ValueNotifier<bool> favNotifier;
+  final Future<void> Function() toggleFavorite;
+  final String? resolvedUrl;
 
-                            // Prompt
-                            Flexible(
-                              child: Container(
-                                margin: const EdgeInsets.symmetric(
-                                    horizontal: 20, vertical: 8),
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.7),
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: SingleChildScrollView(
-                                  physics: const BouncingScrollPhysics(),
-                                  child: Text(widget.item.prompt,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        color: Color(0xFF3B2667),
-                                        height: 1.8,
-                                      )),
-                                ),
-                              ),
-                            ),
+  const _DetailDialog({
+    required this.item,
+    required this.favNotifier,
+    required this.toggleFavorite,
+    this.resolvedUrl,
+  });
 
-                            // Buttons
-                            Padding(
-                              padding:
-                              const EdgeInsets.fromLTRB(16, 4, 16, 18),
-                              child: Row(
-                                mainAxisAlignment:
-                                MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  StatefulBuilder(
-                                    builder: (context, setState) => _GlassButton(
-                                      icon: _isFavorite
-                                          ? Icons.favorite_rounded
-                                          : Icons.favorite_border_rounded,
-                                      label: _isFavorite ? 'Đã thích' : 'Yêu thích',
-                                      onTap: () async {
-                                        await _toggleFavorite();
-                                        setState(() {}); // cập nhật UI trong dialog
-                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                          content: Text(_isFavorite
-                                              ? '💖 Đã thêm vào yêu thích'
-                                              : '❌ Đã xóa khỏi yêu thích'),
-                                        ));
-                                      },
-                                    ),
-                                  ),
-                                  _GlassButton(
-                                    icon: Icons.copy_rounded,
-                                    label: 'Sao chép',
-                                    onTap: () {
-                                      Clipboard.setData(ClipboardData(
-                                          text: widget.item.prompt));
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(const SnackBar(
-                                          content:
-                                          Text('✨ Đã sao chép prompt!')));
-                                    },
-                                  ),
-                                  _GlassButton(
-                                    icon: Icons.share_rounded,
-                                    label: 'Chia sẻ',
-                                    onTap: () => Share.share(
-                                        '${widget.item.title}\n\n${widget.item.prompt}'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.9;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(16),
+      backgroundColor: Colors.white.withOpacity(0.9),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(color: Colors.white.withOpacity(0.4), width: 1),
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header (kéo ở khu vực này sẽ luôn nhận drag để đóng)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded,
+                          color: Colors.white, size: 22),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Ảnh xem trước (không cuộn)
+              if (resolvedUrl != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Hero(
+                    tag: item.id,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: CachedNetworkImage(
+                        imageUrl: resolvedUrl!,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.all(48),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+
+              // Prompt (phần này cuộn, độc lập với gesture kéo-đóng)
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.7),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Scrollbar(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Text(
+                        item.prompt,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Color(0xFF3B2667),
+                          height: 1.8,
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        });
-      },
+
+              // 3 nút cố định dưới (không cuộn)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      ValueListenableBuilder<bool>(
+                        valueListenable: favNotifier,
+                        builder: (_, isFavorite, __) {
+                          return _GlassButton(
+                            icon: isFavorite
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            label: isFavorite ? 'Đã thích' : 'Yêu thích',
+                            onTap: () async {
+                              await toggleFavorite();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(isFavorite
+                                      ? '❌ Đã xóa khỏi yêu thích'
+                                      : '💖 Đã thêm vào yêu thích'),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      _GlassButton(
+                        icon: Icons.copy_rounded,
+                        label: 'Sao chép',
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: item.prompt));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('✨ Đã sao chép prompt!')),
+                          );
+                        },
+                      ),
+                      _GlassButton(
+                        icon: Icons.share_rounded,
+                        label: 'Chia sẻ',
+                        onTap: () => Share.share('${item.title}\n\n${item.prompt}'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
+/// ✨ Nút kính mờ gradient (GlassButton)
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final String label;
