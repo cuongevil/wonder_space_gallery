@@ -145,7 +145,7 @@ class _SettingScreenState extends State<SettingScreen>
     await FirebaseAuth.instance.signOut();
     setState(() => _user = null);
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('👋 Đã đăng xuất khỏi Wonder Space.')));
+        .showSnackBar(const SnackBar(content: Text('👋 Đã đăng xuất.')));
   }
 
   // ☁️ Upload favorites từ local → Firebase
@@ -200,7 +200,7 @@ class _SettingScreenState extends State<SettingScreen>
     final Uri emailLaunchUri = Uri(
       scheme: 'mailto',
       path: 'cuongnb318@gmail.com',
-      query: Uri.encodeFull('subject=Góp ý & Báo lỗi Wonder Space Gallery'),
+      query: Uri.encodeFull('subject=Góp ý & Báo lỗi Wonder Space Thư Viện Ảnh'),
     );
     await launchUrl(emailLaunchUri);
   }
@@ -323,7 +323,7 @@ class _SettingScreenState extends State<SettingScreen>
                           color: Colors.white, size: 24),
                     const SizedBox(width: 12),
                     Text(
-                      _syncing ? 'Đang đồng bộ yêu thích...' : 'Đồng bộ hoàn tất ✨',
+                      _syncing ? 'Đang đồng bộ...' : 'Đồng bộ hoàn tất ✨',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -391,8 +391,8 @@ class _SettingScreenState extends State<SettingScreen>
                 ),
                 Text(
                   _user != null
-                      ? 'Cảm ơn bạn đã đồng hành cùng Wonder Space 💫'
-                      : 'Đăng nhập để đồng bộ ảnh yêu thích nhé!',
+                      ? 'Cảm ơn bạn đã đồng hành 💫'
+                      : 'Đăng nhập để lưu ảnh yêu thích!',
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
                 ),
               ],

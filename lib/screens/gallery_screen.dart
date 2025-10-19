@@ -647,6 +647,23 @@ class _GalleryCardState extends State<_GalleryCard>
                                 mainAxisAlignment:
                                 MainAxisAlignment.spaceEvenly,
                                 children: [
+                                  StatefulBuilder(
+                                    builder: (context, setState) => _GlassButton(
+                                      icon: _isFavorite
+                                          ? Icons.favorite_rounded
+                                          : Icons.favorite_border_rounded,
+                                      label: _isFavorite ? 'Đã thích' : 'Yêu thích',
+                                      onTap: () async {
+                                        await _toggleFavorite();
+                                        setState(() {}); // cập nhật UI trong dialog
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                          content: Text(_isFavorite
+                                              ? '💖 Đã thêm vào yêu thích'
+                                              : '❌ Đã xóa khỏi yêu thích'),
+                                        ));
+                                      },
+                                    ),
+                                  ),
                                   _GlassButton(
                                     icon: Icons.copy_rounded,
                                     label: 'Sao chép',
