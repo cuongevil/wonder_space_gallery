@@ -74,7 +74,7 @@ class WonderSpaceGalleryApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Wonder Space Gallery',
+      title: 'WonderSpace Gallery',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),

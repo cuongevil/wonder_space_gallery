@@ -237,7 +237,7 @@ class _SettingScreenState extends State<SettingScreen>
     final Uri emailLaunchUri = Uri(
       scheme: 'mailto',
       path: 'cuongnb318@gmail.com',
-      query: Uri.encodeFull('subject=Góp ý & Báo lỗi Wonder Space Thư Viện Ảnh'),
+      query: Uri.encodeFull('subject=Góp ý & Báo lỗi WonderSpace Thư Viện Ảnh'),
     );
     await launchUrl(emailLaunchUri);
   }
