@@ -491,17 +491,42 @@ class _GalleryCardState extends State<_GalleryCard>
     ),
   );
 
+  bool _openingDetail = false; // ✅ Flag chặn click đúp
+
   Future<void> _showDetail(BuildContext context) async {
+    // ✅ Ngăn click đúp khi dialog đang mở
+    if (_openingDetail) return;
+    setState(() => _openingDetail = true);
+
+    // 🌀 Hiển thị loading nhẹ trong lúc load ảnh
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.2),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, __, ___) => const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+
     double dragOffset = 0.0;
     String? resolvedUrl;
+
     try {
       resolvedUrl = await resolveImage(widget.item.image);
     } catch (e) {
       debugPrint('⚠️ Lỗi khi load ảnh chi tiết: $e');
     }
 
-    if (!mounted) return;
+    // Đóng dialog loading
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
 
+    if (!mounted) {
+      _openingDetail = false;
+      return;
+    }
+
+    // 💫 Hiển thị dialog chi tiết
     await showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -518,10 +543,11 @@ class _GalleryCardState extends State<_GalleryCard>
               onVerticalDragUpdate: (details) =>
                   setDialogState(() => dragOffset += details.primaryDelta ?? 0),
               onVerticalDragEnd: (_) {
-                if (dragOffset > 100)
+                if (dragOffset > 100) {
                   Navigator.of(context).pop();
-                else
+                } else {
                   setDialogState(() => dragOffset = 0);
+                }
               },
               child: Transform.translate(
                 offset: Offset(0, dragOffset * 0.4),
@@ -546,6 +572,9 @@ class _GalleryCardState extends State<_GalleryCard>
         );
       },
     );
+
+    // ✅ Cho phép click lại sau khi dialog đóng
+    if (mounted) setState(() => _openingDetail = false);
   }
 }
 
@@ -668,12 +697,11 @@ class _DetailDialog extends StatelessWidget {
 
                 // Buttons (đệm dưới theo system bar)
                 Padding(
-                  padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 4,
-                    bottom:
-                    MediaQuery.of(context).padding.bottom + 18, // ✅ key fix
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    6,
+                    16,
+                    12 + MediaQuery.of(context).padding.bottom,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,

@@ -1,4 +1,5 @@
 // 💖 FavoriteScreen — TPBank Mobile 2025 (Glass + Gradient + Drag to Close + Glow Buttons + BannerAd)
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -253,12 +254,19 @@ class _FavoriteScreenState extends State<FavoriteScreen>
   );
 }
 
-// 🧩 Card ảnh yêu thích
-class _FavoriteCard extends StatelessWidget {
+// 🧩 Card ảnh yêu thích (đã thêm loading + chặn click đúp)
+class _FavoriteCard extends StatefulWidget {
   final PromptItem item;
   final VoidCallback onRemove;
 
   const _FavoriteCard({required this.item, required this.onRemove});
+
+  @override
+  State<_FavoriteCard> createState() => _FavoriteCardState();
+}
+
+class _FavoriteCardState extends State<_FavoriteCard> {
+  bool _openingDetail = false; // ✅ Chặn click đúp
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +277,7 @@ class _FavoriteCard extends StatelessWidget {
         child: Stack(
           children: [
             FutureBuilder<String>(
-              future: resolveImage(item.image),
+              future: resolveImage(widget.item.image),
               builder: (_, snap) {
                 if (!snap.hasData) {
                   return const Center(
@@ -300,7 +308,7 @@ class _FavoriteCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 child: Text(
-                  item.title,
+                  widget.item.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -315,7 +323,7 @@ class _FavoriteCard extends StatelessWidget {
               top: 6,
               right: 6,
               child: GestureDetector(
-                onTap: onRemove,
+                onTap: widget.onRemove,
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.3),
@@ -336,9 +344,40 @@ class _FavoriteCard extends StatelessWidget {
     );
   }
 
-  void _showDetail(BuildContext context) {
-    double dragOffset = 0.0;
+  Future<void> _showDetail(BuildContext context) async {
+    if (_openingDetail) return; // ✅ chặn click đúp
+    setState(() => _openingDetail = true);
+
+    // 🌀 Loading nhỏ trong lúc load ảnh
     showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.2),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (_, __, ___) => const Center(
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    );
+
+    double dragOffset = 0.0;
+    String? resolvedUrl;
+
+    try {
+      resolvedUrl = await resolveImage(widget.item.image);
+    } catch (e) {
+      debugPrint('⚠️ Lỗi khi load ảnh chi tiết: $e');
+    }
+
+    // Đóng loading
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+
+    if (!mounted) {
+      _openingDetail = false;
+      return;
+    }
+
+    // 💫 Hiển thị dialog chi tiết
+    await showGeneralDialog(
       context: context,
       barrierLabel: "detail",
       barrierDismissible: true,
@@ -346,8 +385,7 @@ class _FavoriteCard extends StatelessWidget {
       transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
-        final curved =
-        CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
         return StatefulBuilder(
           builder: (context, setState) {
             return GestureDetector(
@@ -355,10 +393,11 @@ class _FavoriteCard extends StatelessWidget {
               onVerticalDragUpdate: (details) =>
                   setState(() => dragOffset += details.primaryDelta ?? 0),
               onVerticalDragEnd: (_) {
-                if (dragOffset > 100)
+                if (dragOffset > 100) {
                   Navigator.of(context).pop();
-                else
+                } else {
                   setState(() => dragOffset = 0);
+                }
               },
               child: Transform.translate(
                 offset: Offset(0, dragOffset * 0.4),
@@ -368,7 +407,9 @@ class _FavoriteCard extends StatelessWidget {
                     opacity: curved,
                     child: ScaleTransition(
                       scale: Tween(begin: 0.96, end: 1.0).animate(curved),
-                      child: _FavoriteDetailDialog(item: item),
+                      child: _FavoriteDetailDialog(
+                        item: widget.item,
+                      ),
                     ),
                   ),
                 ),
@@ -378,6 +419,9 @@ class _FavoriteCard extends StatelessWidget {
         );
       },
     );
+
+    // ✅ Cho phép click lại sau khi dialog đóng
+    if (mounted) setState(() => _openingDetail = false);
   }
 }
 
@@ -487,34 +531,39 @@ class _FavoriteDetailDialog extends StatelessWidget {
                   ),
                 ),
 
-                // Nút dưới cùng
+                // Nút dưới cùng — sát đáy, cân đối chuẩn TPBank Mobile
                 Padding(
-                  padding: EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    top: 4,
-                    bottom:
-                    MediaQuery.of(context).padding.bottom + 18, // ✅ key fix
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    6,
+                    16,
+                    12 + MediaQuery.of(context).padding.bottom, // ✅ sát đáy, vẫn an toàn với gesture bar
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _GlassButton(
-                        icon: Icons.copy_rounded,
-                        label: 'Sao chép',
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: item.prompt));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('✨ Đã sao chép prompt!')),
-                          );
-                        },
+                      Expanded(
+                        child: _GlassButton(
+                          icon: Icons.copy_rounded,
+                          label: 'Sao chép',
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: item.prompt));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('✨ Đã sao chép prompt!'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                      _GlassButton(
-                        icon: Icons.share_rounded,
-                        label: 'Chia sẻ',
-                        onTap: () =>
-                            Share.share('${item.title}\n\n${item.prompt}'),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _GlassButton(
+                          icon: Icons.share_rounded,
+                          label: 'Chia sẻ',
+                          onTap: () => Share.share('${item.title}\n\n${item.prompt}'),
+                        ),
                       ),
                     ],
                   ),
