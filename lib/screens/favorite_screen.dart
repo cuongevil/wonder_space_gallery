@@ -1,5 +1,4 @@
 // 💖 FavoriteScreen — TPBank Mobile 2025 (Glass + Gradient + Drag to Close + Glow Buttons + BannerAd)
-import 'dart:math';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -49,8 +48,10 @@ class _FavoriteScreenState extends State<FavoriteScreen>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(begin: 0.97, end: 1)
-        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    _scaleAnim = Tween<double>(
+      begin: 0.97,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
 
     _scrollCtrl.addListener(_onScroll);
     _loadFavorites();
@@ -93,9 +94,9 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     final cachedJson = prefs.getString('prompts_cache');
 
     if (cachedJson != null) {
-      final items = PromptItem.parseListFromCache(cachedJson)
-          .where((p) => favIds.contains(p.id))
-          .toList();
+      final items = PromptItem.parseListFromCache(
+        cachedJson,
+      ).where((p) => favIds.contains(p.id)).toList();
       setState(() {
         _all = items;
         _filtered = items;
@@ -115,8 +116,11 @@ class _FavoriteScreenState extends State<FavoriteScreen>
     } else {
       setState(() {
         _filtered = _all
-            .where((it) =>
-            (it.title + it.prompt + it.tags.join(' ')).toLowerCase().contains(q))
+            .where(
+              (it) => (it.title + it.prompt + it.tags.join(' '))
+                  .toLowerCase()
+                  .contains(q),
+            )
             .toList();
       });
     }
@@ -131,8 +135,9 @@ class _FavoriteScreenState extends State<FavoriteScreen>
       _all.removeWhere((p) => p.id == id);
       _filtered.removeWhere((p) => p.id == id);
     });
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('🗑️ Đã xoá khỏi yêu thích')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('🗑️ Đã xoá khỏi yêu thích')));
   }
 
   @override
@@ -195,8 +200,11 @@ class _FavoriteScreenState extends State<FavoriteScreen>
                   _searchCtrl.clear();
                   _applyFilter();
                 },
-                child: const Icon(Icons.clear_rounded,
-                    color: Colors.white70, size: 20),
+                child: const Icon(
+                  Icons.clear_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
               ),
           ],
         ),
@@ -214,47 +222,48 @@ class _FavoriteScreenState extends State<FavoriteScreen>
           scale: _scaleAnim,
           child: _filtered.isEmpty
               ? const EmptyState(
-            message: 'Chưa có ảnh nào trong mục yêu thích 💫',
-          )
+                  message: 'Chưa có ảnh nào trong mục yêu thích 💫',
+                )
               : ListView(
-            controller: _scrollCtrl,
-            physics: const BouncingScrollPhysics(),
-            children: [
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 12),
-                gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 0.9,
+                  controller: _scrollCtrl,
+                  physics: const BouncingScrollPhysics(),
+                  children: [
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 0.9,
+                          ),
+                      itemCount: _filtered.length,
+                      itemBuilder: (_, i) {
+                        final item = _filtered[i];
+                        return _FavoriteCard(
+                          item: item,
+                          onRemove: () => _removeFavorite(item.id),
+                        );
+                      },
+                    ),
+                    if (_isBannerLoaded)
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Center(child: AdWidget(ad: _bannerAd!)),
+                      ),
+                  ],
                 ),
-                itemCount: _filtered.length,
-                itemBuilder: (_, i) {
-                  final item = _filtered[i];
-                  return _FavoriteCard(
-                    item: item,
-                    onRemove: () => _removeFavorite(item.id),
-                  );
-                },
-              ),
-              if (_isBannerLoaded)
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Center(child: AdWidget(ad: _bannerAd!)),
-                ),
-            ],
-          ),
         ),
       ),
     ),
   );
 }
 
-// 🧩 Card ảnh yêu thích (đã thêm loading + chặn click đúp)
 class _FavoriteCard extends StatefulWidget {
   final PromptItem item;
   final VoidCallback onRemove;
@@ -281,7 +290,8 @@ class _FavoriteCardState extends State<_FavoriteCard> {
               builder: (_, snap) {
                 if (!snap.hasData) {
                   return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2));
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
                 }
                 return CachedNetworkImage(
                   imageUrl: snap.data!,
@@ -354,9 +364,8 @@ class _FavoriteCardState extends State<_FavoriteCard> {
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.2),
       transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (_, __, ___) => const Center(
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
+      pageBuilder: (_, __, ___) =>
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
     );
 
     double dragOffset = 0.0;
@@ -385,7 +394,10 @@ class _FavoriteCardState extends State<_FavoriteCard> {
       transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         return StatefulBuilder(
           builder: (context, setState) {
             return GestureDetector(
@@ -407,9 +419,7 @@ class _FavoriteCardState extends State<_FavoriteCard> {
                     opacity: curved,
                     child: ScaleTransition(
                       scale: Tween(begin: 0.96, end: 1.0).animate(curved),
-                      child: _FavoriteDetailDialog(
-                        item: widget.item,
-                      ),
+                      child: _FavoriteDetailDialog(item: widget.item),
                     ),
                   ),
                 ),
@@ -427,148 +437,164 @@ class _FavoriteCardState extends State<_FavoriteCard> {
 
 class _FavoriteDetailDialog extends StatelessWidget {
   final PromptItem item;
+
   const _FavoriteDetailDialog({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    final maxHeight = MediaQuery.of(context).size.height * 0.9;
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      backgroundColor: Colors.white.withOpacity(0.9),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-        side: BorderSide(color: Colors.white.withOpacity(0.4), width: 1),
-      ),
-      child: SafeArea(
-        top: false,
-        bottom: true, // ✅ tránh bị che bởi system navigation
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                ),
+    final media = MediaQuery.of(context);
+    final bottomInset = media.viewPadding.bottom;
 
-                FutureBuilder<String>(
-                  future: resolveImage(item.image),
-                  builder: (_, snap) {
-                    if (!snap.hasData) {
-                      return const Padding(
-                        padding: EdgeInsets.all(48),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      );
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: CachedNetworkImage(
-                          imageUrl: snap.data!,
-                          fit: BoxFit.cover,
+    return Scaffold(
+      backgroundColor: Colors.black.withOpacity(0.25),
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        top: true, // ✅ tránh đè status bar
+        bottom: true, // ✅ tránh đè thanh điều hướng
+        child: Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              bottomInset + 16, // ✅ chừa khoảng cách dưới
+            ),
+            child: Material(
+              color: Colors.white.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(28),
+              clipBehavior: Clip.antiAlias,
+              elevation: 0,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: media.size.height * 0.88, // tránh tràn toàn màn hình
+                  maxWidth: 600,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 🌈 Header Gradient
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
                       ),
-                    );
-                  },
-                ),
-
-                // Nội dung cuộn
-                Expanded(
-                  child: Container(
-                    margin:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Scrollbar(
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Text(
-                          item.prompt,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Color(0xFF3B2667),
-                            height: 1.8,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Nút dưới cùng — sát đáy, cân đối chuẩn TPBank Mobile
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    6,
-                    16,
-                    12 + MediaQuery.of(context).padding.bottom, // ✅ sát đáy, vẫn an toàn với gesture bar
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Expanded(
-                        child: _GlassButton(
-                          icon: Icons.copy_rounded,
-                          label: 'Sao chép',
-                          onTap: () {
-                            Clipboard.setData(ClipboardData(text: item.prompt));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('✨ Đã sao chép prompt!'),
-                                behavior: SnackBarBehavior.floating,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
                               ),
-                            );
-                          },
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 🖼️ Ảnh preview
+                    FutureBuilder<String>(
+                      future: resolveImage(item.image),
+                      builder: (_, snap) {
+                        if (!snap.hasData) {
+                          return const Padding(
+                            padding: EdgeInsets.all(48),
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: CachedNetworkImage(
+                              imageUrl: snap.data!,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+
+                    // 🧾 Nội dung
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 8),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Scrollbar(
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Text(
+                              item.prompt,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF3B2667),
+                                height: 1.8,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _GlassButton(
-                          icon: Icons.share_rounded,
-                          label: 'Chia sẻ',
-                          onTap: () => Share.share('${item.title}\n\n${item.prompt}'),
-                        ),
+                    ),
+
+                    // 💎 Buttons (bottom safe)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Expanded(
+                            child: _GlassButton(
+                              icon: Icons.copy_rounded,
+                              label: 'Sao chép',
+                              onTap: () {
+                                Clipboard.setData(
+                                    ClipboardData(text: item.prompt));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✨ Đã sao chép prompt!'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _GlassButton(
+                              icon: Icons.share_rounded,
+                              label: 'Chia sẻ',
+                              onTap: () => Share.share(
+                                  '${item.title}\n\n${item.prompt}'),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -577,7 +603,6 @@ class _FavoriteDetailDialog extends StatelessWidget {
   }
 }
 
-// ✨ Glass Button Gradient
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -601,8 +626,7 @@ class _GlassButton extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(14),
-        border:
-        Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
+        border: Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
         boxShadow: [
           BoxShadow(
             color: Colors.deepPurple.withOpacity(0.12),

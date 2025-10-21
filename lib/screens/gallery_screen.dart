@@ -35,7 +35,7 @@ class _GalleryScreenState extends State<GalleryScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
-  final int _batchSize = 30;
+  final int _batchSize = 20;
 
   List<PromptItem> _all = [];
   List<PromptItem> _visible = [];
@@ -593,164 +593,176 @@ class _DetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxHeight = MediaQuery.of(context).size.height * 0.9;
+    final media = MediaQuery.of(context);
+    final bottomInset = media.viewPadding.bottom; // 🔹 dùng viewPadding thay vì padding
 
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      backgroundColor: Colors.white.withOpacity(0.9),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-        side: BorderSide(color: Colors.white.withOpacity(0.4), width: 1),
-      ),
-      child: SafeArea( // ✅ tránh bị che bởi system navigation
-        top: false,
+    return Scaffold(
+      backgroundColor: Colors.black.withOpacity(0.25),
+      resizeToAvoidBottomInset: false, // ✅ tránh layout tự co giãn khi bàn phím bật
+      body: SafeArea(
+        top: true, // ✅ bật lại SafeArea phía trên
         bottom: true,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxHeight),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+        child: Align(
+          alignment: Alignment.center, // ✅ căn giữa dialog trong vùng an toàn
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              bottomInset + 16, // ✅ luôn cách thanh điều hướng 16px
+            ),
+            child: Material(
+              color: Colors.white.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(28),
+              clipBehavior: Clip.antiAlias,
+              elevation: 0,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: media.size.height * 0.88,
+                  maxWidth: 600,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 🌈 Header gradient
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded,
+                                color: Colors.white, size: 22),
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
+
+                    // 🖼️ Ảnh preview
+                    if (resolvedUrl != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Hero(
+                          tag: item.id,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: CachedNetworkImage(
+                              imageUrl: resolvedUrl!,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      const Padding(
+                        padding: EdgeInsets.all(48),
+                        child: Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+
+                    // 🧾 Prompt nội dung
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 8),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Scrollbar(
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Text(
+                              item.prompt,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF3B2667),
+                                height: 1.8,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                // Ảnh preview
-                if (resolvedUrl != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Hero(
-                      tag: item.id,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: CachedNetworkImage(
-                          imageUrl: resolvedUrl!,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  const Padding(
-                    padding: EdgeInsets.all(48),
-                    child: Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-
-                // Prompt scroll
-                Expanded(
-                  child: Container(
-                    margin:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Scrollbar(
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Text(
-                          item.prompt,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Color(0xFF3B2667),
-                            height: 1.8,
+                    // 💎 Buttons
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          ValueListenableBuilder<bool>(
+                            valueListenable: favNotifier,
+                            builder: (_, isFavorite, __) {
+                              return _GlassButton(
+                                icon: isFavorite
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded,
+                                label:
+                                isFavorite ? 'Đã thích' : 'Yêu thích',
+                                onTap: () async {
+                                  await toggleFavorite();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        isFavorite
+                                            ? '❌ Đã xóa khỏi yêu thích'
+                                            : '💖 Đã thêm vào yêu thích',
+                                      ),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                              );
+                            },
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Buttons (đệm dưới theo system bar)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    6,
-                    16,
-                    12 + MediaQuery.of(context).padding.bottom,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      ValueListenableBuilder<bool>(
-                        valueListenable: favNotifier,
-                        builder: (_, isFavorite, __) {
-                          return _GlassButton(
-                            icon: isFavorite
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            label: isFavorite ? 'Đã thích' : 'Yêu thích',
-                            onTap: () async {
-                              await toggleFavorite();
+                          _GlassButton(
+                            icon: Icons.copy_rounded,
+                            label: 'Sao chép',
+                            onTap: () {
+                              Clipboard.setData(
+                                  ClipboardData(text: item.prompt));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    isFavorite
-                                        ? '❌ Đã xóa khỏi yêu thích'
-                                        : '💖 Đã thêm vào yêu thích',
-                                  ),
+                                const SnackBar(
+                                  content: Text('✨ Đã sao chép prompt!'),
+                                  behavior: SnackBarBehavior.floating,
                                 ),
                               );
                             },
-                          );
-                        },
+                          ),
+                          _GlassButton(
+                            icon: Icons.share_rounded,
+                            label: 'Chia sẻ',
+                            onTap: () => Share.share(
+                                '${item.title}\n\n${item.prompt}'),
+                          ),
+                        ],
                       ),
-                      _GlassButton(
-                        icon: Icons.copy_rounded,
-                        label: 'Sao chép',
-                        onTap: () {
-                          Clipboard.setData(ClipboardData(text: item.prompt));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('✨ Đã sao chép prompt!'),
-                            ),
-                          );
-                        },
-                      ),
-                      _GlassButton(
-                        icon: Icons.share_rounded,
-                        label: 'Chia sẻ',
-                        onTap: () =>
-                            Share.share('${item.title}\n\n${item.prompt}'),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
