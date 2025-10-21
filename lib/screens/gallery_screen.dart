@@ -53,11 +53,11 @@ class _GalleryScreenState extends State<GalleryScreen>
   bool _isBannerLoaded = false;
 
   final List<String> _searchHints = const [
-    'Giáng Sinh pastel',
-    'Bé gái Việt Nam',
-    'Ảnh điện ảnh',
-    'Thành phố về đêm',
-    'Phong cảnh vintage',
+    'Cảm hứng mới mỗi ngày ✨',
+    'Không gian nghệ thuật 💜',
+    'Sắc thái cuộc sống 🌈',
+    'Góc nhìn sáng tạo 🌌',
+    'Vẻ đẹp tinh tế 💫',
   ];
 
   @override

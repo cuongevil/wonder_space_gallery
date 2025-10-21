@@ -1,4 +1,5 @@
-// ⚙️ SettingScreen — TPBank Glass Gradient 2025 + Auto Sync Favorite (local ⇆ Firebase)
+// ⚙️ SettingScreen — TPBank Glass Gradient 2025 + Auto Sync + Update Banner
+import 'dart:io';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,6 +26,11 @@ class _SettingScreenState extends State<SettingScreen>
   bool _synced = false;
   bool _phase = false;
 
+  // 🔔 Cập nhật
+  bool _hasUpdate = false;
+  String? _updateMessage;
+  String? _updateUrl;
+
   static const _lastSyncKey = 'last_favorite_sync_date';
 
   late final AnimationController _fadeCtrl;
@@ -40,7 +46,6 @@ class _SettingScreenState extends State<SettingScreen>
     _loadAppInfo();
     _user = FirebaseAuth.instance.currentUser;
 
-    // 🔁 Tự động đồng bộ nếu đã đăng nhập và chưa sync hôm nay
     if (_user != null) {
       Future.delayed(const Duration(milliseconds: 600), _autoSyncFavorites);
     }
@@ -62,6 +67,11 @@ class _SettingScreenState extends State<SettingScreen>
     AnimationController(vsync: this, duration: const Duration(seconds: 8))
       ..repeat();
 
+    _startPhaseLoop();
+    _checkForUpdate(); // ✅ Tự động kiểm tra khi mở
+  }
+
+  void _startPhaseLoop() {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 4));
       if (!mounted) return false;
@@ -83,13 +93,64 @@ class _SettingScreenState extends State<SettingScreen>
     setState(() => _version = '${info.version}+${info.buildNumber}');
   }
 
+  // 🔔 Kiểm tra bản cập nhật từ Firestore
+  Future<void> _checkForUpdate({bool manual = false}) async {
+    final info = await PackageInfo.fromPlatform();
+    final currentVersion = info.version;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('app_meta')
+          .doc('wonder_space_gallery') // ⚙️ thay bằng tên app
+          .get();
+
+      final data = doc.data();
+      final latest = data?['latestVersion'];
+      final message =
+          data?['updateMessage'] ?? '🎉 Có bản cập nhật mới! Nhấn để xem chi tiết.';
+      final playUrl = data?['playStoreUrl'];
+      final appUrl = data?['appStoreUrl'];
+
+      if (latest != null && latest != currentVersion) {
+        setState(() {
+          _hasUpdate = true;
+          _updateMessage = message;
+          _updateUrl = Platform.isAndroid ? playUrl : appUrl;
+        });
+
+        if (manual) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🎉 Đã có bản cập nhật mới ($latest)!'),
+              backgroundColor: Colors.deepPurpleAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else if (manual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Bạn đang sử dụng phiên bản mới nhất.'),
+            backgroundColor: Colors.deepPurpleAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (manual) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('⚠️ Lỗi kiểm tra cập nhật: $e')),
+        );
+      }
+    }
+  }
+
   // ☁️ Auto sync mỗi ngày 1 lần
   Future<void> _autoSyncFavorites() async {
     final prefs = await SharedPreferences.getInstance();
     final today = DateTime.now();
     final lastSync = prefs.getString(_lastSyncKey);
-
-    if (lastSync == _formatDate(today)) return; // Đã sync hôm nay
+    if (lastSync == _formatDate(today)) return;
 
     setState(() => _syncing = true);
     await _syncFavoritesToFirebase();
@@ -107,7 +168,7 @@ class _SettingScreenState extends State<SettingScreen>
 
   String _formatDate(DateTime d) => '${d.year}-${d.month}-${d.day}';
 
-  // ☁️ Manual sync
+  // ☁️ Đồng bộ thủ công
   Future<void> _manualSyncFavorites() async {
     setState(() {
       _syncing = true;
@@ -117,21 +178,19 @@ class _SettingScreenState extends State<SettingScreen>
     try {
       await _syncFavoritesToFirebase();
       await _fetchFavoritesFromFirebase();
-
       setState(() {
         _syncing = false;
         _synced = true;
       });
+
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) setState(() => _synced = false);
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('☁️ Đồng bộ hoàn tất!'),
-          backgroundColor: Colors.deepPurpleAccent,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('☁️ Đồng bộ hoàn tất!'),
+        backgroundColor: Colors.deepPurpleAccent,
+      ));
     } catch (e) {
       setState(() {
         _syncing = false;
@@ -142,34 +201,24 @@ class _SettingScreenState extends State<SettingScreen>
     }
   }
 
-  // 🔐 Đăng nhập Google
+  // 🔐 Google login
   Future<void> _loginWithGoogle() async {
-    setState(() {
-      _loading = true;
-      _synced = false;
-    });
-
+    setState(() => _loading = true);
     try {
       final googleSignIn = GoogleSignIn(scopes: ['email']);
       await googleSignIn.signOut();
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) return;
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      final user = await googleSignIn.signIn();
+      if (user == null) return;
+      final auth = await user.authentication;
+      final cred = GoogleAuthProvider.credential(
+        accessToken: auth.accessToken,
+        idToken: auth.idToken,
       );
 
-      final userCred =
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCred = await FirebaseAuth.instance.signInWithCredential(cred);
       setState(() => _user = userCred.user);
 
       await _manualSyncFavorites();
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('🌈 Xin chào ${_user?.displayName ?? "bạn"}!'),
-        backgroundColor: Colors.deepPurpleAccent.withOpacity(0.9),
-      ));
     } catch (e) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('⚠️ Lỗi đăng nhập: $e')));
@@ -187,7 +236,6 @@ class _SettingScreenState extends State<SettingScreen>
         .showSnackBar(const SnackBar(content: Text('👋 Đã đăng xuất.')));
   }
 
-  // ☁️ Upload local → Firebase
   Future<void> _syncFavoritesToFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -196,31 +244,26 @@ class _SettingScreenState extends State<SettingScreen>
     final firestore = FirebaseFirestore.instance;
     final favLocal = prefs.getStringList('favorites_local') ?? [];
 
-    final userRef = firestore.collection('favorites').doc(user.uid).collection('items');
-    final snapshot = await userRef.get();
+    final ref = firestore.collection('favorites').doc(user.uid).collection('items');
+    final snapshot = await ref.get();
     final favOnline = snapshot.docs.map((d) => d.id).toList();
-
-    final merged = {...favLocal, ...favOnline}.toList();
 
     for (final id in favLocal) {
       if (!favOnline.contains(id)) {
-        await userRef.doc(id).set({'createdAt': FieldValue.serverTimestamp()});
+        await ref.doc(id).set({'createdAt': FieldValue.serverTimestamp()});
       }
     }
-
-    await prefs.setStringList('favorites_local', merged);
   }
 
-  // ☁️ Download Firebase → local
   Future<void> _fetchFavoritesFromFirebase() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     final prefs = await SharedPreferences.getInstance();
-    final firestore = FirebaseFirestore.instance;
-    final snapshot =
-    await firestore.collection('favorites').doc(user.uid).collection('items').get();
-
+    final snapshot = await FirebaseFirestore.instance
+        .collection('favorites')
+        .doc(user.uid)
+        .collection('items')
+        .get();
     final favIds = snapshot.docs.map((d) => d.id).toList();
     await prefs.setStringList('favorites_local', favIds);
   }
@@ -234,12 +277,12 @@ class _SettingScreenState extends State<SettingScreen>
   }
 
   Future<void> _sendFeedback() async {
-    final Uri emailLaunchUri = Uri(
+    final Uri email = Uri(
       scheme: 'mailto',
       path: 'cuongnb318@gmail.com',
       query: Uri.encodeFull('subject=Góp ý & Báo lỗi WonderSpace Thư Viện Ảnh'),
     );
-    await launchUrl(emailLaunchUri);
+    await launchUrl(email);
   }
 
   @override
@@ -257,34 +300,11 @@ class _SettingScreenState extends State<SettingScreen>
       ),
       child: Stack(
         children: [
-          // ✨ Nền shimmer
-          AnimatedBuilder(
-            animation: _shimmerCtrl,
-            builder: (context, _) {
-              final dx = _shimmerCtrl.value * 2 - 1;
-              return ShaderMask(
-                shaderCallback: (rect) => LinearGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.25),
-                    Colors.white.withOpacity(0.05),
-                    Colors.white.withOpacity(0.25),
-                  ],
-                  begin: Alignment(-1.0 + dx, -1.0),
-                  end: Alignment(1.0 + dx, 1.0),
-                ).createShader(rect),
-                blendMode: BlendMode.srcOver,
-                child: Container(color: Colors.transparent),
-              );
-            },
-          ),
-
-          // 💫 Blur nền
+          _buildShimmer(),
           BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(color: Colors.white.withOpacity(0.06)),
           ),
-
-          // 🌸 Nội dung chính
           FadeTransition(
             opacity: _fadeAnim,
             child: SlideTransition(
@@ -294,6 +314,8 @@ class _SettingScreenState extends State<SettingScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_hasUpdate && _updateMessage != null)
+                      _UpdateBanner(message: _updateMessage!, url: _updateUrl),
                     _buildHeader(),
                     const SizedBox(height: 28),
                     _buildGlassCard(
@@ -308,15 +330,21 @@ class _SettingScreenState extends State<SettingScreen>
                       content: Column(
                         children: [
                           _buildSettingItem(
+                            Icons.system_update_alt_rounded,
+                            'Kiểm tra cập nhật',
+                            'Phiên bản $_version',
+                                () => _checkForUpdate(manual: true),
+                          ),
+                          _buildSettingItem(
                             Icons.privacy_tip_outlined,
                             'Chính sách & Quyền riêng tư',
-                            'Xem thông tin và điều khoản sử dụng.',
+                            'Xem điều khoản sử dụng',
                             _openPrivacyPolicy,
                           ),
                           _buildSettingItem(
                             Icons.email_outlined,
                             'Góp ý & Báo lỗi',
-                            'Gửi phản hồi trực tiếp qua email.',
+                            'Gửi phản hồi qua email',
                             _sendFeedback,
                           ),
                         ],
@@ -327,51 +355,7 @@ class _SettingScreenState extends State<SettingScreen>
               ),
             ),
           ),
-
-          // 🌈 Hiển thị tiến trình đồng bộ
-          if (_syncing || _synced)
-            Center(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 400),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.6)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.deepPurple.withOpacity(0.25),
-                      blurRadius: 20,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_syncing)
-                      const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    if (_synced)
-                      const Icon(Icons.check_circle_rounded,
-                          color: Colors.white, size: 24),
-                    const SizedBox(width: 12),
-                    Text(
-                      _syncing ? 'Đang đồng bộ...' : 'Đồng bộ hoàn tất ✨',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
+          if (_syncing || _synced) _buildSyncIndicator(),
           if (_loading)
             Container(
               color: Colors.black.withOpacity(0.25),
@@ -382,63 +366,57 @@ class _SettingScreenState extends State<SettingScreen>
     );
   }
 
-  Widget _buildHeader() {
-    return AnimatedBuilder(
-      animation: _glowAnim,
-      builder: (_, __) => Row(
+  Widget _buildShimmer() => AnimatedBuilder(
+    animation: _shimmerCtrl,
+    builder: (context, _) {
+      final dx = _shimmerCtrl.value * 2 - 1;
+      return ShaderMask(
+        shaderCallback: (rect) => LinearGradient(
+          colors: [
+            Colors.white.withOpacity(0.25),
+            Colors.white.withOpacity(0.05),
+            Colors.white.withOpacity(0.25),
+          ],
+          begin: Alignment(-1.0 + dx, -1.0),
+          end: Alignment(1.0 + dx, 1.0),
+        ).createShader(rect),
+        blendMode: BlendMode.srcOver,
+        child: Container(color: Colors.transparent),
+      );
+    },
+  );
+
+  Widget _buildHeader() => Row(
+    children: [
+      CircleAvatar(
+        radius: 28,
+        backgroundImage: _user?.photoURL != null
+            ? NetworkImage(_user!.photoURL!)
+            : const AssetImage('assets/logo.png') as ImageProvider,
+      ),
+      const SizedBox(width: 14),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.deepPurpleAccent.withOpacity(_glowAnim.value * 0.5),
-                  blurRadius: 28 * _glowAnim.value,
-                  spreadRadius: 2 * _glowAnim.value,
-                ),
-              ],
-            ),
-            child: CircleAvatar(
-              radius: 28,
-              backgroundImage: _user?.photoURL != null
-                  ? NetworkImage(_user!.photoURL!)
-                  : const AssetImage('assets/logo.png') as ImageProvider,
-            ),
+          Text(
+            _user != null
+                ? 'Chào ${_user!.displayName?.split(" ").first ?? "bạn"} 👋'
+                : 'Xin chào bạn 👋',
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 18),
           ),
-          const SizedBox(width: 14),
-          ShaderMask(
-            shaderCallback: (rect) => const LinearGradient(
-              colors: [Colors.white, Color(0xFFFFE1A0)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ).createShader(rect),
-            blendMode: BlendMode.srcIn,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _user != null
-                      ? 'Chào ${_user!.displayName?.split(" ").first ?? "bạn"} 👋'
-                      : 'Xin chào bạn 👋',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                Text(
-                  _user != null
-                      ? 'Cảm ơn bạn đã đồng hành 💫'
-                      : 'Đăng nhập để lưu ảnh yêu thích!',
-                  style:
-                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w400),
-                ),
-              ],
-            ),
+          Text(
+            _user != null
+                ? 'Cảm ơn bạn đã đồng hành 💫'
+                : 'Đăng nhập để lưu ảnh yêu thích!',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
         ],
       ),
-    );
-  }
+    ],
+  );
 
   Widget _buildGlassCard({
     required IconData icon,
@@ -463,14 +441,11 @@ class _SettingScreenState extends State<SettingScreen>
                 children: [
                   Icon(icon, color: Colors.white, size: 24),
                   const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+                  Text(title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16)),
                 ],
               ),
               const SizedBox(height: 16),
@@ -484,111 +459,187 @@ class _SettingScreenState extends State<SettingScreen>
 
   Widget _buildLoginCard() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           _user == null
-              ? 'Đăng nhập bằng Google để lưu trữ và đồng bộ ảnh yêu thích ☁️'
+              ? 'Đăng nhập để lưu trữ và đồng bộ ảnh yêu thích ☁️'
               : _user!.email ?? '',
-          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+          style: const TextStyle(color: Colors.white, fontSize: 14),
         ),
         const SizedBox(height: 12),
-        Center(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // 🌈 Nút Đồng bộ ngay ☁️ — chỉ hiển thị khi đã đăng nhập
-              if (_user != null) ...[
-                const SizedBox(width: 10),
-                AnimatedBuilder(
-                  animation: _glowAnim,
-                  builder: (_, __) => GestureDetector(
-                    onTap: _manualSyncFavorites,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white.withOpacity(0.25)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.deepPurpleAccent
-                                .withOpacity(_glowAnim.value * 0.6),
-                            blurRadius: 22 * _glowAnim.value,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.sync_rounded,
-                              color: Colors.white, size: 18),
-                          SizedBox(width: 6),
-                          Text(
-                            'Đồng bộ ngay',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-
-              // 🌈 Nút Đăng nhập / Đăng xuất
-              GestureDetector(
-                onTap: _user == null ? _loginWithGoogle : _logout,
-                child: Container(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.deepPurple.withOpacity(0.25),
-                        blurRadius: 18,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          if (_user != null)
+            _buildButton(Icons.sync_rounded, 'Đồng bộ ngay', _manualSyncFavorites),
+          const SizedBox(width: 12),
+          _buildButton(
+              _user == null ? Icons.login_rounded : Icons.logout_rounded,
+              _user == null ? 'Đăng nhập Google' : 'Đăng xuất',
+              _user == null ? _loginWithGoogle : _logout),
+        ]),
       ],
     );
   }
 
+  Widget _buildButton(IconData icon, String label, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              Text(label,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      );
+
   Widget _buildSettingItem(
-      IconData icon, String title, String subtitle, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.white.withOpacity(0.9)),
-      title: Text(title,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-      subtitle: Text(subtitle,
-          style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
-      onTap: onTap,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    );
+      IconData icon, String title, String subtitle, VoidCallback onTap) =>
+      ListTile(
+        leading: Icon(icon, color: Colors.white),
+        title: Text(title,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle:
+        Text(subtitle, style: const TextStyle(color: Colors.white70)),
+        onTap: onTap,
+      );
+
+  Widget _buildSyncIndicator() => Center(
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (_syncing)
+          const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2)),
+        if (_synced)
+          const Icon(Icons.check_circle_rounded,
+              color: Colors.white, size: 24),
+        const SizedBox(width: 10),
+        Text(_syncing ? 'Đang đồng bộ...' : 'Đồng bộ hoàn tất ✨',
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w600)),
+      ]),
+    ),
+  );
+}
+
+/// 🔔 Banner cập nhật — Fade + Slide + Nút "Cập nhật ngay"
+class _UpdateBanner extends StatefulWidget {
+  final String message;
+  final String? url;
+  const _UpdateBanner({required this.message, this.url});
+
+  @override
+  State<_UpdateBanner> createState() => _UpdateBannerState();
+}
+
+class _UpdateBannerState extends State<_UpdateBanner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _animCtrl;
+  late final Animation<double> _fadeAnim;
+  late final Animation<Offset> _slideAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl =
+    AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
+      ..forward();
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
+    _slideAnim = Tween<Offset>(
+        begin: const Offset(0, -0.2), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
   }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+    opacity: _fadeAnim,
+    child: SlideTransition(
+      position: _slideAnim,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding:
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF5E2CED), Color(0xFFFF8B00)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.deepPurple.withOpacity(0.25),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.system_update_rounded,
+                color: Colors.white, size: 24),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(widget.message,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15)),
+            ),
+            if (widget.url != null)
+              GestureDetector(
+                onTap: () async {
+                  final uri = Uri.parse(widget.url!);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri,
+                        mode: LaunchMode.externalApplication);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Text('Cập nhật',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600)),
+                      SizedBox(width: 4),
+                      Icon(Icons.arrow_forward_ios_rounded,
+                          color: Colors.white, size: 13),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
