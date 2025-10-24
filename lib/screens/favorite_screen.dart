@@ -285,6 +285,7 @@ class _FavoriteCardState extends State<_FavoriteCard> {
         borderRadius: BorderRadius.circular(20),
         child: Stack(
           children: [
+            // 🖼 Ảnh chính
             FutureBuilder<String>(
               future: resolveImage(widget.item.image),
               builder: (_, snap) {
@@ -297,49 +298,70 @@ class _FavoriteCardState extends State<_FavoriteCard> {
                   imageUrl: snap.data!,
                   fit: BoxFit.cover,
                   width: double.infinity,
+                  height: double.infinity,
                 );
               },
             ),
-            Positioned.fill(
+
+            // 🌈 Gradient mờ phía dưới
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 80,
               child: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.4)],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.5),
+                      Colors.black.withOpacity(0.8),
+                    ],
                   ),
                 ),
               ),
             ),
+
+            // 🏷 Tiêu đề (đè lên vùng gradient)
             Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                child: Text(
-                  widget.item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Text(
+                widget.item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                  shadows: [
+                    Shadow(
+                      blurRadius: 4,
+                      color: Colors.black54,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
                 ),
               ),
             ),
+
+            // 🗑️ Nút xóa
             Positioned(
-              top: 6,
-              right: 6,
+              top: 8,
+              right: 8,
               child: GestureDetector(
                 onTap: widget.onRemove,
+                behavior: HitTestBehavior.opaque,
                 child: Container(
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.black.withOpacity(0.25),
                     shape: BoxShape.circle,
                   ),
-                  padding: const EdgeInsets.all(6),
                   child: const Icon(
                     Icons.delete_rounded,
                     color: Colors.white,

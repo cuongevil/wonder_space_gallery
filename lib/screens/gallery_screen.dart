@@ -432,14 +432,15 @@ class _GalleryCardState extends State<_GalleryCard>
   Widget build(BuildContext context) => Material(
     color: Colors.transparent,
     borderRadius: BorderRadius.circular(20),
-    child: Stack(
-      children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => _showDetail(context),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: FutureBuilder<String>(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => _showDetail(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            // 🖼 Ảnh chính
+            FutureBuilder<String>(
               future: resolveImage(widget.item.image),
               builder: (_, snap) {
                 if (!snap.hasData) {
@@ -451,43 +452,95 @@ class _GalleryCardState extends State<_GalleryCard>
                   child: CachedNetworkImage(
                     imageUrl: snap.data!,
                     fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
                   ),
                 );
               },
             ),
-          ),
-        ),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: GestureDetector(
-            onTap: _toggleFavorite,
-            behavior: HitTestBehavior.opaque,
-            child: ScaleTransition(
-              scale: Tween(begin: 1.0, end: 1.3).animate(
-                CurvedAnimation(
-                    parent: _heartCtrl, curve: Curves.elasticOut),
-              ),
+
+            // 🌈 Gradient mờ phía dưới ảnh
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 80,
               child: Container(
-                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.25),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isFavorite
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  color: _isFavorite
-                      ? Colors.pinkAccent
-                      : Colors.white.withOpacity(0.9),
-                  size: 22,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.5),
+                      Colors.black.withOpacity(0.8),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
+
+            // 🏷 Title ảnh (đè lên vùng gradient)
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 10,
+              child: Text(
+                widget.item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                  shadows: [
+                    Shadow(
+                      blurRadius: 4,
+                      color: Colors.black45,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // 💖 Nút yêu thích
+            Positioned(
+              top: 8,
+              right: 8,
+              child: GestureDetector(
+                onTap: _toggleFavorite,
+                behavior: HitTestBehavior.opaque,
+                child: ScaleTransition(
+                  scale: Tween(begin: 1.0, end: 1.3).animate(
+                    CurvedAnimation(
+                      parent: _heartCtrl,
+                      curve: Curves.elasticOut,
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.25),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: _isFavorite
+                          ? Colors.pinkAccent
+                          : Colors.white.withOpacity(0.9),
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     ),
   );
 
