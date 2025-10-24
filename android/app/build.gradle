@@ -16,7 +16,7 @@ android {
         applicationId "com.ctmd.wonderforge.wonderspace.gallery"
         minSdkVersion flutter.minSdkVersion
         targetSdkVersion 36
-        versionCode 14
+        versionCode 15
         versionName "1.0.0"
     }
 
