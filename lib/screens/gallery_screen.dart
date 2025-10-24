@@ -21,7 +21,7 @@ import '../services/firebase_image_resolver.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/wonder_screen_wrapper.dart';
 
-/// 💎 GalleryScreen — Glass Blur, Gradient, Hero Detail, Realtime Favorite Sync + Banner Ads + SafeArea Fix
+/// 💎 GalleryScreen — Glass Blur, Gradient, Hero Detail, Swipe Left/Right + Banner Ads
 class GalleryScreen extends StatefulWidget {
   final ValueChanged<ScrollDirection>? onScrollDirectionChanged;
 
@@ -48,7 +48,6 @@ class _GalleryScreenState extends State<GalleryScreen>
   late final Animation<double> _fadeAnim;
   late final Animation<double> _scaleAnim;
 
-  // 🪄 BannerAd
   BannerAd? _bannerAd;
   bool _isBannerLoaded = false;
 
@@ -100,7 +99,6 @@ class _GalleryScreenState extends State<GalleryScreen>
     super.dispose();
   }
 
-  /// 📦 Load JSON trending từ Firebase Storage
   Future<void> _loadTrending({bool forceRefresh = false}) async {
     setState(() {
       _loading = true;
@@ -146,8 +144,7 @@ class _GalleryScreenState extends State<GalleryScreen>
 
   void _parseData(Map<String, dynamic> data) {
     final items =
-        (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ??
-            [];
+        (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ?? [];
     items.sort((a, b) => b.id.compareTo(a.id));
     _all = items;
     _visible = _all.take(_batchSize).toList();
@@ -271,8 +268,7 @@ class _GalleryScreenState extends State<GalleryScreen>
           scale: _scaleAnim,
           child: ListView(
             controller: _scrollCtrl,
-            padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             physics: const BouncingScrollPhysics(),
             children: [
               _visible.isEmpty
@@ -296,7 +292,6 @@ class _GalleryScreenState extends State<GalleryScreen>
   );
 }
 
-/// 🖼️ Grid + Banner
 class _GalleryGrid extends StatelessWidget {
   final List<PromptItem> items;
   final BannerAd? bannerAd;
@@ -333,7 +328,6 @@ class _GalleryGrid extends StatelessWidget {
   }
 }
 
-/// 📸 Thẻ ảnh + popup chi tiết
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
   const _GalleryCard({required this.item});
@@ -351,13 +345,13 @@ class _GalleryCardState extends State<_GalleryCard>
   StreamSubscription? _favSubscription;
   final ValueNotifier<bool> _favVN = ValueNotifier<bool>(false);
 
+  bool _openingDetail = false;
+
   @override
   void initState() {
     super.initState();
-    _heartCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
+    _heartCtrl =
+        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
     _initFavoriteListener();
   }
 
@@ -439,7 +433,6 @@ class _GalleryCardState extends State<_GalleryCard>
         borderRadius: BorderRadius.circular(20),
         child: Stack(
           children: [
-            // 🖼 Ảnh chính
             FutureBuilder<String>(
               future: resolveImage(widget.item.image),
               builder: (_, snap) {
@@ -458,8 +451,6 @@ class _GalleryCardState extends State<_GalleryCard>
                 );
               },
             ),
-
-            // 🌈 Gradient mờ phía dưới ảnh
             Positioned(
               left: 0,
               right: 0,
@@ -479,8 +470,6 @@ class _GalleryCardState extends State<_GalleryCard>
                 ),
               ),
             ),
-
-            // 🏷 Title ảnh (đè lên vùng gradient)
             Positioned(
               left: 10,
               right: 10,
@@ -504,8 +493,6 @@ class _GalleryCardState extends State<_GalleryCard>
                 ),
               ),
             ),
-
-            // 💖 Nút yêu thích
             Positioned(
               top: 8,
               right: 8,
@@ -544,42 +531,35 @@ class _GalleryCardState extends State<_GalleryCard>
     ),
   );
 
-  bool _openingDetail = false; // ✅ Flag chặn click đúp
-
   Future<void> _showDetail(BuildContext context) async {
-    // ✅ Ngăn click đúp khi dialog đang mở
     if (_openingDetail) return;
     setState(() => _openingDetail = true);
 
-    // 🌀 Hiển thị loading nhẹ trong lúc load ảnh
+    // 🌀 Loading nhỏ
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.2),
       transitionDuration: const Duration(milliseconds: 200),
-      pageBuilder: (_, __, ___) => const Center(
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
+      pageBuilder: (_, __, ___) =>
+      const Center(child: CircularProgressIndicator(strokeWidth: 2)),
     );
 
-    double dragOffset = 0.0;
     String? resolvedUrl;
-
     try {
       resolvedUrl = await resolveImage(widget.item.image);
     } catch (e) {
       debugPrint('⚠️ Lỗi khi load ảnh chi tiết: $e');
     }
 
-    // Đóng dialog loading
     if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
 
-    if (!mounted) {
-      _openingDetail = false;
-      return;
-    }
+    final parentState = context.findAncestorStateOfType<_GalleryScreenState>();
+    if (parentState == null) return;
+    final items = parentState._visible;
+    int currentIndex = items.indexOf(widget.item);
+    final favNotifier = ValueNotifier<bool>(_isFavorite);
 
-    // 💫 Hiển thị dialog chi tiết
     await showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -589,6 +569,8 @@ class _GalleryCardState extends State<_GalleryCard>
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
         final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        double dragOffset = 0;
+
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return GestureDetector(
@@ -610,11 +592,25 @@ class _GalleryCardState extends State<_GalleryCard>
                     opacity: curved,
                     child: ScaleTransition(
                       scale: Tween(begin: 0.96, end: 1.0).animate(curved),
-                      child: _DetailDialog(
-                        item: widget.item,
-                        favNotifier: _favVN,
-                        toggleFavorite: _toggleFavorite,
-                        resolvedUrl: resolvedUrl,
+                      child: PageView.builder(
+                        controller: PageController(initialPage: currentIndex),
+                        itemCount: items.length,
+                        onPageChanged: (i) async {
+                          currentIndex = i;
+                          // 🔄 Cập nhật trạng thái yêu thích theo ảnh mới
+                          final prefs = await SharedPreferences.getInstance();
+                          final favLocal =
+                              prefs.getStringList('favorites_local') ?? [];
+                          favNotifier.value = favLocal.contains(items[i].id);
+                        },
+                        itemBuilder: (context, i) => _DetailDialog(
+                          item: items[i],
+                          favNotifier: favNotifier,
+                          toggleFavorite: _toggleFavorite,
+                          resolvedUrl: (i == items.indexOf(widget.item))
+                              ? resolvedUrl
+                              : null,
+                        ),
                       ),
                     ),
                   ),
@@ -626,7 +622,6 @@ class _GalleryCardState extends State<_GalleryCard>
       },
     );
 
-    // ✅ Cho phép click lại sau khi dialog đóng
     if (mounted) setState(() => _openingDetail = false);
   }
 }
@@ -647,23 +642,18 @@ class _DetailDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final bottomInset = media.viewPadding.bottom; // 🔹 dùng viewPadding thay vì padding
+    final bottomInset = media.viewPadding.bottom;
 
     return Scaffold(
       backgroundColor: Colors.black.withOpacity(0.25),
-      resizeToAvoidBottomInset: false, // ✅ tránh layout tự co giãn khi bàn phím bật
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
-        top: true, // ✅ bật lại SafeArea phía trên
+        top: true,
         bottom: true,
         child: Align(
-          alignment: Alignment.center, // ✅ căn giữa dialog trong vùng an toàn
+          alignment: Alignment.center,
           child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              bottomInset + 16, // ✅ luôn cách thanh điều hướng 16px
-            ),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
             child: Material(
               color: Colors.white.withOpacity(0.92),
               borderRadius: BorderRadius.circular(28),
@@ -677,7 +667,6 @@ class _DetailDialog extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 🌈 Header gradient
                     Container(
                       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                       decoration: const BoxDecoration(
@@ -710,34 +699,44 @@ class _DetailDialog extends StatelessWidget {
                       ),
                     ),
 
-                    // 🖼️ Ảnh preview
-                    if (resolvedUrl != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: Hero(
-                          tag: item.id,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: CachedNetworkImage(
-                              imageUrl: resolvedUrl!,
-                              fit: BoxFit.cover,
-                            ),
+                    // 🖼️ Ảnh preview (tự load nếu null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Hero(
+                        tag: item.id,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: resolvedUrl != null
+                              ? CachedNetworkImage(
+                            imageUrl: resolvedUrl!,
+                            fit: BoxFit.cover,
+                          )
+                              : FutureBuilder<String>(
+                            future: resolveImage(item.image),
+                            builder: (_, snap) {
+                              if (!snap.hasData) {
+                                return const SizedBox(
+                                  height: 240,
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  ),
+                                );
+                              }
+                              return CachedNetworkImage(
+                                imageUrl: snap.data!,
+                                fit: BoxFit.cover,
+                              );
+                            },
                           ),
                         ),
-                      )
-                    else
-                      const Padding(
-                        padding: EdgeInsets.all(48),
-                        child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
                       ),
+                    ),
 
-                    // 🧾 Prompt nội dung
                     Expanded(
                       child: Container(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 20, vertical: 8),
+                        margin:
+                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.75),
@@ -759,7 +758,6 @@ class _DetailDialog extends StatelessWidget {
                       ),
                     ),
 
-                    // 💎 Buttons
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
                       child: Row(
@@ -772,8 +770,7 @@ class _DetailDialog extends StatelessWidget {
                                 icon: isFavorite
                                     ? Icons.favorite_rounded
                                     : Icons.favorite_border_rounded,
-                                label:
-                                isFavorite ? 'Đã thích' : 'Yêu thích',
+                                label: isFavorite ? 'Đã thích' : 'Yêu thích',
                                 onTap: () async {
                                   await toggleFavorite();
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -807,8 +804,8 @@ class _DetailDialog extends StatelessWidget {
                           _GlassButton(
                             icon: Icons.share_rounded,
                             label: 'Chia sẻ',
-                            onTap: () => Share.share(
-                                '${item.title}\n\n${item.prompt}'),
+                            onTap: () =>
+                                Share.share('${item.title}\n\n${item.prompt}'),
                           ),
                         ],
                       ),
@@ -824,7 +821,6 @@ class _DetailDialog extends StatelessWidget {
   }
 }
 
-/// ✨ Nút kính mờ gradient (GlassButton)
 class _GlassButton extends StatelessWidget {
   final IconData icon;
   final String label;

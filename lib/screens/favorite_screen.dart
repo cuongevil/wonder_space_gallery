@@ -380,14 +380,14 @@ class _FavoriteCardState extends State<_FavoriteCard> {
     if (_openingDetail) return; // ✅ chặn click đúp
     setState(() => _openingDetail = true);
 
-    // 🌀 Loading nhỏ trong lúc load ảnh
+    // 🌀 Loading tạm
     showGeneralDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withOpacity(0.2),
       transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (_, __, ___) =>
-          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      const Center(child: CircularProgressIndicator(strokeWidth: 2)),
     );
 
     double dragOffset = 0.0;
@@ -407,7 +407,12 @@ class _FavoriteCardState extends State<_FavoriteCard> {
       return;
     }
 
-    // 💫 Hiển thị dialog chi tiết
+    // 💫 Mở dialog có PageView chuyển ảnh trái/phải
+    final parentState = context.findAncestorStateOfType<_FavoriteScreenState>();
+    if (parentState == null) return;
+    final items = parentState._filtered;
+    int currentIndex = items.indexOf(widget.item);
+
     await showGeneralDialog(
       context: context,
       barrierLabel: "detail",
@@ -421,16 +426,16 @@ class _FavoriteCardState extends State<_FavoriteCard> {
           curve: Curves.easeOutCubic,
         );
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setDialogState) {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onVerticalDragUpdate: (details) =>
-                  setState(() => dragOffset += details.primaryDelta ?? 0),
+                  setDialogState(() => dragOffset += details.primaryDelta ?? 0),
               onVerticalDragEnd: (_) {
                 if (dragOffset > 100) {
                   Navigator.of(context).pop();
                 } else {
-                  setState(() => dragOffset = 0);
+                  setDialogState(() => dragOffset = 0);
                 }
               },
               child: Transform.translate(
@@ -441,7 +446,16 @@ class _FavoriteCardState extends State<_FavoriteCard> {
                     opacity: curved,
                     child: ScaleTransition(
                       scale: Tween(begin: 0.96, end: 1.0).animate(curved),
-                      child: _FavoriteDetailDialog(item: widget.item),
+                      child: PageView.builder(
+                        controller: PageController(initialPage: currentIndex),
+                        itemCount: items.length,
+                        onPageChanged: (i) => setDialogState(() {
+                          currentIndex = i;
+                        }),
+                        itemBuilder: (context, i) => _FavoriteDetailDialog(
+                          item: items[i],
+                        ),
+                      ),
                     ),
                   ),
                 ),
