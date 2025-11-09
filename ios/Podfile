@@ -1,8 +1,7 @@
 # ===========================================
-# Wonder Space Gallery - Podfile v8.1 FINAL FIX
-# ✅ Fully compatible with Codemagic v8 workflow
-# ✅ Eliminates "conflicting provisioning settings"
-# ✅ Fixes missing Flutter/Flutter.h for Flutter 3.24+
+# Wonder Space Gallery - Podfile v8.2 FINAL FIX
+# ✅ Flutter 3.24+ + Codemagic M2 compatible
+# ✅ Fixes missing Flutter/Flutter.h (xcframework)
 # ===========================================
 
 platform :ios, '15.0'
@@ -37,11 +36,23 @@ end
 #  POST INSTALL FIXES
 # ===========================================
 post_install do |installer|
-  puts "🚧 Applying post_install signing cleanup & Flutter header fix..."
+  puts "🚧 Applying post_install signing cleanup & Flutter header fix (v8.2)..."
+
+  flutter_bin = `which flutter`.strip
+  flutter_root = File.expand_path(File.join(File.dirname(flutter_bin), '..'))
+  engine_dir = File.join(flutter_root, 'bin', 'cache', 'artifacts', 'engine')
+
+  flutter_header_paths = [
+    File.join(engine_dir, 'ios', 'Flutter.framework', 'Headers'),
+    File.join(engine_dir, 'darwin-x64-release', 'Flutter.framework', 'Headers'),
+    File.join(engine_dir, 'darwin-arm64-release', 'Flutter.framework', 'Headers'),
+    File.join(engine_dir, 'Flutter.xcframework', 'ios-arm64', 'Flutter.framework', 'Headers'),
+    File.join(engine_dir, 'Flutter.xcframework', 'ios-arm64_armv7', 'Flutter.framework', 'Headers')
+  ]
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # --- Signing cleanup ---
+      # Cleanup signing
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
       config.build_settings['DEVELOPMENT_TEAM'] = ''
@@ -49,33 +60,20 @@ post_install do |installer|
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
 
-      # --- Fix missing Flutter/Flutter.h (new xcframework structure) ---
-      flutter_bin = `which flutter`.strip
-      flutter_root = File.expand_path(File.join(File.dirname(flutter_bin), '..'))
-      engine_dir = File.join(flutter_root, 'bin', 'cache', 'artifacts', 'engine')
-
-      # Chuẩn bị paths tìm header
-      framework_headers = [
-        File.join(engine_dir, 'ios', 'Flutter.framework', 'Headers'),
-        File.join(engine_dir, 'darwin-x64-release', 'Flutter.framework', 'Headers'),
-        File.join(engine_dir, 'darwin-arm64-release', 'Flutter.framework', 'Headers'),
-        File.join(engine_dir, 'Flutter.xcframework', 'ios-arm64', 'Flutter.framework', 'Headers'),
-        File.join(engine_dir, 'Flutter.xcframework', 'ios-arm64_armv7', 'Flutter.framework', 'Headers')
-      ]
-
+      # Ensure framework + header search paths
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
       config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
 
-      framework_headers.each do |path|
-        if File.directory?(path)
-          config.build_settings['FRAMEWORK_SEARCH_PATHS'] << File.dirname(path)
-          config.build_settings['HEADER_SEARCH_PATHS'] << path
+      flutter_header_paths.each do |header_path|
+        if File.directory?(header_path)
+          config.build_settings['FRAMEWORK_SEARCH_PATHS'] << File.dirname(header_path)
+          config.build_settings['HEADER_SEARCH_PATHS'] << header_path
         end
       end
     end
   end
 
-  # --- Manual signing for Runner ---
+  # Manual signing cho Runner
   installer.aggregate_targets.each do |aggregate_target|
     aggregate_target.user_project.native_targets.each do |target|
       next unless target.name == 'Runner'
@@ -88,5 +86,5 @@ post_install do |installer|
     end
   end
 
-  puts "✅ post_install completed: Flutter.xcframework header linked & signing fixed."
+  puts "✅ post_install completed: xcframework header linked successfully."
 end
