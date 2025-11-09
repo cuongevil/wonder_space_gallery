@@ -19,73 +19,76 @@ workflows:
         PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
 
     scripts:
-      - name: 🧹 Clean & Install Pods
+      - name: 🧹 Clean & deps
         script: |
           set -e
-          echo "🧹 Cleaning Flutter build..."
           flutter clean
           flutter pub get
           flutter precache --ios
+
+      - name: 🔨 Build Flutter iOS (no codesign) — FIRST
+        script: |
+          set -e
+          echo "🔨 flutter build ios --release --no-codesign"
+          flutter build ios --release --no-codesign
+
+          # Fallback: nếu Flutter.h chưa có, tự liên kết từ xcframework
+          if [ ! -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
+            echo "⚠️ Flutter.h missing after build. Trying to link from Flutter.xcframework..."
+            mkdir -p ios/Flutter
+            # Tìm SDK thực
+            if command -v greadlink &>/dev/null; then
+              FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
+            else
+              FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
+            fi
+            if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
+              FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
+            fi
+            FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
+            ENGINE_DIR="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
+
+            # Ưu tiên xcframework slice thiết bị
+            XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
+            if [ -z "$XC_SLICE" ]; then
+              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" | head -n 1)
+            fi
+            if [ -z "$XC_SLICE" ]; then
+              # fallback bất kỳ Flutter.framework
+              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.framework" | head -n 1)
+            fi
+
+            if [ -n "$XC_SLICE" ]; then
+              echo "✅ Linking Flutter.framework from: $XC_SLICE"
+              rm -rf ios/Flutter/Flutter.framework
+              cp -R "$XC_SLICE" ios/Flutter/Flutter.framework
+            else
+              echo "❌ Could not find Flutter.framework slice in engine cache."
+              ls -R "$ENGINE_DIR" || true
+              exit 1
+            fi
+
+            if [ -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
+              echo "✅ Flutter.h now present."
+            else
+              echo "❌ Flutter.h still missing."
+              exit 1
+            fi
+          else
+            echo "✅ Flutter.h present after build."
+          fi
+
+      - name: 📦 CocoaPods install — AFTER build
+        script: |
+          set -e
           cd ios
           pod repo update
           pod install
           cd ..
-          echo "✅ CocoaPods installed successfully."
 
-      - name: 🔨 Build Flutter iOS (no codesign)
+      - name: 🚀 Archive (App Store)
         script: |
           set -e
-          echo "🔨 Detecting Flutter.framework..."
-          mkdir -p ios/Flutter
-
-          # Detect Flutter SDK root safely for macOS / Codemagic M1/M2
-          if command -v greadlink &>/dev/null; then
-            FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
-          else
-            FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
-          fi
-
-          if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
-            FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
-          fi
-
-          FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
-          echo "📍 Flutter SDK root detected at: $FLUTTER_SDK_ROOT"
-
-          FLUTTER_ENGINE_PATH="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
-          FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
-
-          if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
-            echo "⚠️ Flutter.framework not found, running flutter precache..."
-            flutter precache --ios
-            FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
-          fi
-
-          if [ -n "$FLUTTER_FRAMEWORK_PATH" ]; then
-            echo "✅ Found Flutter.framework at: $FLUTTER_FRAMEWORK_PATH"
-            cp -R "$FLUTTER_FRAMEWORK_PATH" ios/Flutter/
-          else
-            echo "❌ Could not locate Flutter.framework even after precache!"
-            ls -R "$FLUTTER_ENGINE_PATH" || true
-            exit 1
-          fi
-
-          echo "📦 Building Flutter iOS app (no codesign)..."
-          flutter build ios --release --no-codesign
-          echo "✅ Flutter iOS build completed successfully."
-
-          echo "📂 Checking Flutter.h..."
-          if [ -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
-            echo "✅ Flutter.h found."
-          else
-            echo "⚠️ Flutter.h missing! Build may fail."
-            find ios/Flutter -name "Flutter.h" || true
-          fi
-
-      - name: 🚀 Build iOS Archive (App Store)
-        script: |
-          set -e
-          echo "🚀 Running Xcode archive..."
           mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
@@ -100,19 +103,17 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export signed IPA (App Store)
+      - name: 📦 Export IPA (App Store)
         script: |
           set -e
-          echo "📦 Exporting signed IPA using exportOptions_appstore.plist..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_appstore.plist \
             -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully."
+          echo "✅ IPA exported."
 
-      - name: 📋 Show IPA files
+      - name: 📋 List IPA
         script: |
-          echo "📂 IPA files:"
           find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:
@@ -138,61 +139,72 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧹 Clean & Install Pods
+      - name: 🧹 Clean & deps
         script: |
           set -e
           flutter clean
           flutter pub get
           flutter precache --ios
+
+      - name: 🔨 Build Flutter iOS (no codesign) — FIRST
+        script: |
+          set -e
+          flutter build ios --release --no-codesign
+
+          # Fallback: tự liên kết Flutter.framework nếu thiếu header
+          if [ ! -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
+            echo "⚠️ Flutter.h missing after build. Linking from xcframework..."
+            mkdir -p ios/Flutter
+            if command -v greadlink &>/dev/null; then
+              FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
+            else
+              FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
+            fi
+            if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
+              FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
+            fi
+            FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
+            ENGINE_DIR="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
+
+            XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
+            if [ -z "$XC_SLICE" ]; then
+              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" | head -n 1)
+            fi
+            if [ -z "$XC_SLICE" ]; then
+              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.framework" | head -n 1)
+            fi
+
+            if [ -n "$XC_SLICE" ]; then
+              echo "✅ Linking Flutter.framework from: $XC_SLICE"
+              rm -rf ios/Flutter/Flutter.framework
+              cp -R "$XC_SLICE" ios/Flutter/Flutter.framework
+            else
+              echo "❌ Could not find Flutter.framework slice."
+              ls -R "$ENGINE_DIR" || true
+              exit 1
+            fi
+
+            if [ -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
+              echo "✅ Flutter.h now present."
+            else
+              echo "❌ Flutter.h still missing."
+              exit 1
+            fi
+          else
+            echo "✅ Flutter.h present after build."
+          fi
+
+      - name: 📦 CocoaPods install — AFTER build
+        script: |
+          set -e
           cd ios
+          pod repo update
           pod install
           cd ..
 
-      - name: 🔨 Build Flutter iOS (no codesign)
+      - name: 🚀 Archive (Ad Hoc)
         script: |
           set -e
-          echo "🔨 Detecting Flutter.framework..."
-          mkdir -p ios/Flutter
-
-          if command -v greadlink &>/dev/null; then
-            FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
-          else
-            FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
-          fi
-
-          if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
-            FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
-          fi
-
-          FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
-          echo "📍 Flutter SDK root detected at: $FLUTTER_SDK_ROOT"
-
-          FLUTTER_ENGINE_PATH="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
-          FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
-
-          if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
-            echo "⚠️ Flutter.framework not found, running flutter precache..."
-            flutter precache --ios
-            FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
-          fi
-
-          if [ -n "$FLUTTER_FRAMEWORK_PATH" ]; then
-            echo "✅ Found Flutter.framework at: $FLUTTER_FRAMEWORK_PATH"
-            cp -R "$FLUTTER_FRAMEWORK_PATH" ios/Flutter/
-          else
-            echo "❌ Could not locate Flutter.framework even after precache!"
-            ls -R "$FLUTTER_ENGINE_PATH" || true
-            exit 1
-          fi
-
-          echo "📦 Building Flutter iOS app (no codesign)..."
-          flutter build ios --release --no-codesign
-          echo "✅ Flutter iOS build completed successfully."
-
-      - name: 🚀 Build iOS Archive (Ad Hoc)
-        script: |
-          set -e
-          echo "🚀 Running Xcode archive (Ad Hoc)..."
           mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
@@ -207,20 +219,18 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export signed IPA (Ad Hoc)
+      - name: 📦 Export IPA (Ad Hoc)
         script: |
           set -e
-          echo "📦 Exporting signed IPA using exportOptions_adhoc.plist..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
-          echo "✅ AdHoc IPA exported successfully."
+          echo "✅ AdHoc IPA exported."
 
-      - name: 📋 Show IPA Path
+      - name: 📋 List IPA
         script: |
-          echo "📂 IPA ready at:"
-          find build/ios/ipa -name "*.ipa"
+          find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:
       - build/ios/ipa/*.ipa
