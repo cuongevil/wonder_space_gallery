@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Phương thức phát hành: App Store -->
+  <key>method</key>
+  <string>app-store</string>
+
+  <!-- Team ID -->
+  <key>teamID</key>
+  <string>CS2UV6F3ZY</string>
+
+  <!-- Manual Signing -->
+  <key>signingStyle</key>
+  <string>manual</string>
+
+  <!-- Provisioning Profile -->
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+    <string>WonderSpaceGallery_AppStore_Profile</string>
+  </dict>
+
+  <!-- Bitcode đã deprecated -->
+  <key>compileBitcode</key>
+  <false/>
+
+  <!-- Tự động upload symbols cho Crashlytics -->
+  <key>uploadSymbols</key>
+  <true/>
+
+  <!-- Không upload bitcode -->
+  <key>uploadBitcode</key>
+  <false/>
+
+  <!-- Giữ Swift symbols -->
+  <key>stripSwiftSymbols</key>
+  <true/>
+
+  <!-- Đích export -->
+  <key>destination</key>
+  <string>export</string>
+
+  <!-- Xuất universal IPA -->
+  <key>thinning</key>
+  <string>&lt;none&gt;</string>
+
+  <!-- Giữ nguyên certificate -->
+  <key>signingCertificate</key>
+  <string>Apple Distribution</string>
+
+  <!-- Apple sẽ quản lý version/build tự động -->
+  <key>manageAppVersionAndBuildNumber</key>
+  <true/>
+</dict>
+</plist>

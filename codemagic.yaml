@@ -38,52 +38,20 @@ workflows:
         script: |
           set -e
           echo "🔨 Building Flutter iOS Runner..."
-
-          # 🩹 FIX: Ensure Flutter.framework exists and linked before build
           mkdir -p ios/Flutter
+
           FLUTTER_ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine/ios
           if [ -d "$FLUTTER_ENGINE_DIR/Flutter.framework" ]; then
-            echo "🔗 Copying Flutter.framework manually..."
+            echo "✅ Found Flutter.framework, copying..."
             cp -R "$FLUTTER_ENGINE_DIR/Flutter.framework" ios/Flutter/
           else
-            echo "⚠️ Flutter.framework not found in cache; forcing precache..."
+            echo "⚠️ Flutter.framework not found, forcing precache..."
             flutter precache --ios
             cp -R "$FLUTTER_ENGINE_DIR/Flutter.framework" ios/Flutter/
           fi
 
-          echo "📚 Verifying Flutter.framework headers..."
-          ls ios/Flutter/Flutter.framework/Headers || echo "❌ Headers missing!"
-
-          # 🔨 Build Flutter iOS app without signing
           flutter build ios --release --no-codesign
           echo "✅ Flutter iOS build completed."
-
-      - name: 🧾 Create exportOptions.plist
-        script: |
-          set -e
-          mkdir -p build/ios
-          cat > build/ios/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${BUNDLE_ID}</key>
-              <string>${PROFILE_NAME}</string>
-            </dict>
-            <key>destination</key>
-            <string>export</string>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
-          echo "✅ exportOptions.plist created."
 
       - name: 🚀 Build iOS Archive
         script: |
@@ -104,31 +72,19 @@ workflows:
             CODE_SIGNING_REQUIRED=YES \
             | tee build_log.txt | xcpretty
 
-          if [ ! -d "build/ios/archive/Runner.xcarchive" ]; then
-            echo "⚠️ Archive not found in build/ios/archive — checking fallback..."
-            LATEST_ARCHIVE=$(ls -dt ~/Library/Developer/Xcode/Archives/*/*Runner.xcarchive 2>/dev/null | head -n 1)
-            if [ -n "$LATEST_ARCHIVE" ]; then
-              echo "📦 Found fallback archive: $LATEST_ARCHIVE"
-              mkdir -p build/ios/archive
-              cp -R "$LATEST_ARCHIVE" build/ios/archive/Runner.xcarchive
-            else
-              echo "❌ No archive found anywhere!"
-              exit 65
-            fi
-          fi
           echo "✅ Archive ready at build/ios/archive/Runner.xcarchive"
 
-      - name: 📦 Export signed IPA
+      - name: 📦 Export signed IPA (App Store)
         script: |
           set -e
-          echo "📦 Exporting signed IPA..."
+          echo "📦 Exporting signed IPA with exportOptions_appstore.plist..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist build/ios/exportOptions.plist \
+            -exportOptionsPlist ios/exportOptions_appstore.plist \
             -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
 
-      - name: 📋 Show IPA
+      - name: 📋 Show IPA files
         script: |
           echo "📂 IPA files:"
           find build/ios/ipa -type f -name "*.ipa"
@@ -161,38 +117,29 @@ workflows:
           set -e
           flutter clean
           flutter pub get
+          flutter precache --ios
           cd ios
           pod install
           cd ..
 
       - name: 🔨 Build Flutter iOS (no codesign)
         script: |
-          flutter build ios --release --no-codesign
+          set -e
+          echo "🔨 Preparing Flutter.framework..."
+          mkdir -p ios/Flutter
 
-      - name: 🧾 Create exportOptions.plist (Ad Hoc)
-        script: |
-          mkdir -p build/ios
-          cat > build/ios/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${BUNDLE_ID}</key>
-              <string>${PROFILE_NAME}</string>
-            </dict>
-            <key>destination</key>
-            <string>export</string>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
+          FLUTTER_ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine/ios
+          if [ -d "$FLUTTER_ENGINE_DIR/Flutter.framework" ]; then
+            echo "✅ Found Flutter.framework, copying..."
+            cp -R "$FLUTTER_ENGINE_DIR/Flutter.framework" ios/Flutter/
+          else
+            echo "⚠️ Flutter.framework not found, forcing precache..."
+            flutter precache --ios
+            cp -R "$FLUTTER_ENGINE_DIR/Flutter.framework" ios/Flutter/
+          fi
+
+          flutter build ios --release --no-codesign
+          echo "✅ Flutter iOS build completed."
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
@@ -209,12 +156,15 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export signed IPA
+      - name: 📦 Export signed IPA (Ad Hoc)
         script: |
+          set -e
+          echo "📦 Exporting signed IPA with exportOptions_adhoc.plist..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist build/ios/exportOptions.plist \
+            -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
+          echo "✅ AdHoc IPA exported successfully."
 
       - name: 📋 Show IPA Path
         script: |
