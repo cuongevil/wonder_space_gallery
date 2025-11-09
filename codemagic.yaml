@@ -135,3 +135,91 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
+
+  ios_adhoc_manual:
+    name: iOS AdHoc (Wonder Space Gallery)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+
+    environment:
+      flutter: stable
+      xcode: latest
+      groups:
+        - ios_credentials
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
+      vars:
+        TEAM_ID: "CS2UV6F3ZY"
+        BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
+        CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
+        PROFILE_NAME: "wonderspace_gallery_adhoc"
+
+    scripts:
+      - name: 🧹 Clean & Install Pods
+        script: |
+          set -e
+          flutter clean
+          flutter pub get
+          cd ios
+          pod install
+          cd ..
+
+      - name: 🔨 Build Flutter iOS (no codesign)
+        script: |
+          flutter build ios --release --no-codesign
+
+      - name: 🧾 Create exportOptions.plist (Ad Hoc)
+        script: |
+          mkdir -p build/ios
+          cat > build/ios/exportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 🚀 Build iOS Archive (Ad Hoc)
+        script: |
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_IDENTITY="${CERT_NAME}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES
+
+      - name: 📦 Export signed IPA
+        script: |
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist build/ios/exportOptions.plist \
+            -exportPath build/ios/ipa
+
+      - name: 📋 Show IPA Path
+        script: |
+          echo "📂 IPA ready at:"
+          find build/ios/ipa -name "*.ipa"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
