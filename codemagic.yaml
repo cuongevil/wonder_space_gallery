@@ -1,117 +1,4 @@
 workflows:
-  ios_release_manual:
-    name: iOS Release (Wonder Space Gallery)
-    instance_type: mac_mini_m2
-    max_build_duration: 120
-
-    environment:
-      flutter: stable
-      xcode: latest
-      groups:
-        - ios_credentials
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
-      vars:
-        TEAM_ID: "CS2UV6F3ZY"
-        BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
-        CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
-        PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
-
-    scripts:
-      - name: 🧹 Clean & Install Pods first
-        script: |
-          set -e
-          echo "🧹 Cleaning Flutter build..."
-          flutter clean
-          flutter pub get
-
-      - name: 🧩 Ensure Flutter iOS engine headers exist
-        script: |
-          set -e
-          echo "🔍 Checking Flutter.xcframework..."
-          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework/Headers" ]; then
-            echo "⚙️ Missing iOS arm64 slice — forcing full precache..."
-            flutter precache --ios --universal
-          else
-            echo "✅ Flutter.xcframework headers exist."
-          fi
-          echo "Contents of Flutter.xcframework:"
-          ls -R "$ENGINE_DIR/Flutter.xcframework" || true
-
-      - name: 🔨 Flutter Prebuild (Generate Runner)
-        script: |
-          set -e
-          echo "🔨 Building Flutter iOS Runner..."
-          flutter build ios --release --no-codesign
-          echo "✅ Flutter iOS build completed."
-
-      - name: 🧾 Create exportOptions.plist
-        script: |
-          set -e
-          mkdir -p build/ios
-          cat > build/ios/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${BUNDLE_ID}</key>
-              <string>${PROFILE_NAME}</string>
-            </dict>
-            <key>destination</key>
-            <string>export</string>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
-          echo "✅ exportOptions.plist created."
-
-      - name: 🚀 Build iOS Archive
-        script: |
-          set -e
-          echo "🚀 Running Xcode archive..."
-          mkdir -p build/ios/archive
-          xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS,name=Any iOS Device' \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
-            CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES \
-            | tee build_log.txt | xcpretty
-          echo "✅ Archive ready at build/ios/archive/Runner.xcarchive"
-
-      - name: 📦 Export signed IPA
-        script: |
-          set -e
-          echo "📦 Exporting signed IPA..."
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist build/ios/exportOptions.plist \
-            -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully."
-
-      - name: 📋 Show IPA
-        script: |
-          echo "📂 IPA files:"
-          find build/ios/ipa -type f -name "*.ipa"
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-
   ios_adhoc_manual:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
@@ -132,60 +19,57 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧹 Clean & Install Pods
+      - name: 🧹 Clean environment
         script: |
           set -e
           flutter clean
+          rm -rf ios/Flutter/Flutter.framework ios/Flutter/Flutter.podspec
           flutter pub get
 
-      - name: 🧩 Ensure Flutter iOS engine headers exist
+      - name: 🧩 Ensure Flutter.xcframework exists
         script: |
           set -e
           echo "🔍 Checking Flutter.xcframework..."
           ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework/Headers" ]; then
-            echo "⚙️ Missing iOS arm64 slice — forcing full precache..."
+          if [ ! -d "$ENGINE_DIR/Flutter.xcframework" ]; then
+            echo "⚙️ Missing Flutter.xcframework — running full precache..."
             flutter precache --ios --universal
-          else
-            echo "✅ Flutter.xcframework headers exist."
           fi
-          echo "Contents of Flutter.xcframework:"
-          ls -R "$ENGINE_DIR/Flutter.xcframework" || true
+          echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
 
-      - name: 🔨 Build Flutter iOS (no codesign)
+      - name: 🔨 Link Flutter headers manually
         script: |
           set -e
-          echo "📦 Building Flutter iOS app (no codesign)..."
+          echo "🔗 Linking Flutter.xcframework headers..."
+          mkdir -p ios/Flutter
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          FRAMEWORK_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            cp -R "$FRAMEWORK_PATH" ios/Flutter/
+            echo "✅ Copied Flutter.framework to ios/Flutter/"
+          else
+            echo "❌ Missing Flutter.framework inside xcframework!"
+            exit 1
+          fi
+          echo "📁 Headers:"
+          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers not found"
+
+      - name: 🧾 Install Pods
+        script: |
+          set -e
+          cd ios
+          pod repo update
+          pod install
+          cd ..
+
+      - name: 🚀 Build iOS Archive
+        script: |
+          set -e
+          echo "🚀 Building Flutter iOS release (no codesign)..."
           flutter build ios --release --no-codesign
-          echo "✅ Flutter iOS build completed successfully."
 
-      - name: 🧾 Create exportOptions.plist (Ad Hoc)
-        script: |
-          mkdir -p build/ios
-          cat > build/ios/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${BUNDLE_ID}</key>
-              <string>${PROFILE_NAME}</string>
-            </dict>
-            <key>destination</key>
-            <string>export</string>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
-
-      - name: 🚀 Build iOS Archive (Ad Hoc)
-        script: |
+          echo "📦 Running Xcode archive..."
+          mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -201,10 +85,13 @@ workflows:
 
       - name: 📦 Export signed IPA
         script: |
+          set -e
+          echo "📦 Exporting signed IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist build/ios/exportOptions.plist \
+            -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
+          echo "✅ IPA exported successfully."
 
       - name: 📋 Show IPA Path
         script: |
