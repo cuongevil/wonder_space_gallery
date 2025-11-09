@@ -38,20 +38,28 @@ workflows:
           echo "🔨 Detecting Flutter.framework..."
           mkdir -p ios/Flutter
 
-          FLUTTER_SDK_ROOT=$(dirname $(dirname $(which flutter)))
-          FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d | head -n 1)
+          # Resolve actual Flutter SDK path (handle Codemagic symlink)
+          FLUTTER_BIN_PATH=$(readlink -f "$(which flutter)" || which flutter)
+          FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
 
+          # Try to locate Flutter.framework
+          FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
+
+          # If not found, force precache
           if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "⚠️ Flutter.framework not found, running flutter precache..."
             flutter precache --ios
-            FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d | head -n 1)
+            FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
           fi
 
+          # Verify and copy
           if [ -n "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "✅ Found Flutter.framework at: $FLUTTER_FRAMEWORK_PATH"
             cp -R "$FLUTTER_FRAMEWORK_PATH" ios/Flutter/
           else
             echo "❌ Could not locate Flutter.framework after precache!"
+            echo "🔍 Dumping Flutter engine contents for debugging:"
+            ls -R "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" || true
             exit 1
           fi
 
@@ -131,20 +139,28 @@ workflows:
           echo "🔨 Detecting Flutter.framework..."
           mkdir -p ios/Flutter
 
-          FLUTTER_SDK_ROOT=$(dirname $(dirname $(which flutter)))
-          FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d | head -n 1)
+          # Resolve actual Flutter SDK path (handle Codemagic symlink)
+          FLUTTER_BIN_PATH=$(readlink -f "$(which flutter)" || which flutter)
+          FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
 
+          # Try to locate Flutter.framework
+          FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
+
+          # If not found, force precache
           if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "⚠️ Flutter.framework not found, running flutter precache..."
             flutter precache --ios
-            FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d | head -n 1)
+            FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
           fi
 
+          # Verify and copy
           if [ -n "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "✅ Found Flutter.framework at: $FLUTTER_FRAMEWORK_PATH"
             cp -R "$FLUTTER_FRAMEWORK_PATH" ios/Flutter/
           else
             echo "❌ Could not locate Flutter.framework after precache!"
+            echo "🔍 Dumping Flutter engine contents for debugging:"
+            ls -R "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" || true
             exit 1
           fi
 
