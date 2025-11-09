@@ -1,4 +1,106 @@
 workflows:
+  ios_release_manual:
+    name: iOS Release (Wonder Space Gallery)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+
+    environment:
+      flutter: stable
+      xcode: latest
+      groups:
+        - ios_credentials
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
+      vars:
+        TEAM_ID: "CS2UV6F3ZY"
+        BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
+        CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
+        PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
+
+    scripts:
+      - name: 🧹 Clean & Install Pods
+        script: |
+          set -e
+          flutter clean
+          flutter pub get
+          cd ios
+          pod repo update
+          pod install
+          cd ..
+
+      - name: 🧩 Ensure Flutter.xcframework exists
+        script: |
+          set -e
+          echo "🔍 Checking Flutter.xcframework..."
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_DIR/Flutter.xcframework" ]; then
+            echo "⚙️ Missing Flutter.xcframework — running full precache..."
+            flutter precache --ios --universal
+          fi
+          echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
+
+      - name: 🔨 Link Flutter headers automatically (v9.1)
+        script: |
+          set -e
+          echo "🔗 Linking Flutter.xcframework headers (auto-detect slice)..."
+          mkdir -p ios/Flutter
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
+
+          if [ ! -d "$XCFRAMEWORK" ]; then
+            echo "⚙️ Flutter.xcframework not found, running precache..."
+            flutter precache --ios --universal
+          fi
+
+          FRAMEWORK_PATH=$(find "$XCFRAMEWORK" -type d -path "*/Flutter.framework" | head -n 1)
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ Found Flutter.framework slice at: $FRAMEWORK_PATH"
+            cp -R "$FRAMEWORK_PATH" ios/Flutter/
+          else
+            echo "❌ Could not locate Flutter.framework in any xcframework slice!"
+            find "$XCFRAMEWORK" -maxdepth 3 -type d
+            exit 1
+          fi
+
+          echo "📁 Headers:"
+          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers not found"
+
+      - name: 🚀 Build iOS Archive (App Store)
+        script: |
+          set -e
+          flutter build ios --release --no-codesign
+          mkdir -p build/ios/archive
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_IDENTITY="${CERT_NAME}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES
+
+      - name: 📦 Export signed IPA (App Store)
+        script: |
+          set -e
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist ios/exportOptions_appstore.plist \
+            -exportPath build/ios/ipa
+          echo "✅ IPA exported successfully."
+
+      - name: 📋 Show IPA
+        script: |
+          echo "📂 IPA files:"
+          find build/ios/ipa -type f -name "*.ipa"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
   ios_adhoc_manual:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
@@ -19,12 +121,14 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧹 Clean environment
+      - name: 🧹 Clean & Install Pods
         script: |
           set -e
           flutter clean
-          rm -rf ios/Flutter/Flutter.framework ios/Flutter/Flutter.podspec
           flutter pub get
+          cd ios
+          pod install
+          cd ..
 
       - name: 🧩 Ensure Flutter.xcframework exists
         script: |
@@ -35,40 +139,34 @@ workflows:
             echo "⚙️ Missing Flutter.xcframework — running full precache..."
             flutter precache --ios --universal
           fi
-          echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
+          echo "✅ Flutter.xcframework ready."
 
-      - name: 🔨 Link Flutter headers manually
+      - name: 🔨 Link Flutter headers automatically (v9.1)
         script: |
           set -e
-          echo "🔗 Linking Flutter.xcframework headers..."
+          echo "🔗 Linking Flutter.xcframework headers (auto-detect slice)..."
           mkdir -p ios/Flutter
           ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
-          FRAMEWORK_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework"
+          XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
+
+          if [ ! -d "$XCFRAMEWORK" ]; then
+            flutter precache --ios --universal
+          fi
+
+          FRAMEWORK_PATH=$(find "$XCFRAMEWORK" -type d -path "*/Flutter.framework" | head -n 1)
           if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ Found Flutter.framework slice at: $FRAMEWORK_PATH"
             cp -R "$FRAMEWORK_PATH" ios/Flutter/
-            echo "✅ Copied Flutter.framework to ios/Flutter/"
           else
-            echo "❌ Missing Flutter.framework inside xcframework!"
+            echo "❌ Could not locate Flutter.framework!"
+            find "$XCFRAMEWORK" -maxdepth 3 -type d
             exit 1
           fi
-          echo "📁 Headers:"
-          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers not found"
 
-      - name: 🧾 Install Pods
+      - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
           set -e
-          cd ios
-          pod repo update
-          pod install
-          cd ..
-
-      - name: 🚀 Build iOS Archive
-        script: |
-          set -e
-          echo "🚀 Building Flutter iOS release (no codesign)..."
           flutter build ios --release --no-codesign
-
-          echo "📦 Running Xcode archive..."
           mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
@@ -83,10 +181,9 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export signed IPA
+      - name: 📦 Export signed IPA (Ad Hoc)
         script: |
           set -e
-          echo "📦 Exporting signed IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
