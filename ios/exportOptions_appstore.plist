@@ -2,30 +2,51 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Phương thức phát hành: App Store -->
+
+  <!-- Phương thức phát hành -->
   <key>method</key>
   <string>app-store</string>
 
-  <!-- Team ID -->
+  <!-- Team ID (chuẩn Apple Developer Team) -->
   <key>teamID</key>
   <string>CS2UV6F3ZY</string>
 
-  <!-- Manual Signing -->
-  <key>signingStyle</key>
-  <string>manual</string>
-
-  <!-- Provisioning Profile -->
+  <!-- Provisioning profile cho từng bundle ID -->
   <key>provisioningProfiles</key>
   <dict>
     <key>com.ctmd.wonderforge.wonderspace.gallery</key>
     <string>WonderSpaceGallery_AppStore_Profile</string>
   </dict>
 
-  <!-- Bitcode đã deprecated -->
+  <!-- Phong cách ký thủ công -->
+  <key>signingStyle</key>
+  <string>manual</string>
+
+  <!-- Certificate phát hành -->
+  <key>signingCertificate</key>
+  <string>Apple Distribution</string>
+
+  <!-- Vô hiệu hóa Bitcode (Apple đã ngừng hỗ trợ) -->
   <key>compileBitcode</key>
   <false/>
 
-  <!-- Tự động upload symbols cho Crashlytics -->
+  <!-- Giữ lại Swift symbols để Apple phân tích crash -->
+  <key>stripSwiftSymbols</key>
+  <true/>
+
+  <!-- Mục tiêu export -->
+  <key>destination</key>
+  <string>export</string>
+
+  <!-- Xuất universal IPA (không phân mảnh) -->
+  <key>thinning</key>
+  <string>&lt;none&gt;</string>
+
+  <!-- Cho phép Apple quản lý build & version -->
+  <key>manageAppVersionAndBuildNumber</key>
+  <true/>
+
+  <!-- Cho phép upload symbols để Crashlytics/TestFlight hoạt động -->
   <key>uploadSymbols</key>
   <true/>
 
@@ -33,24 +54,5 @@
   <key>uploadBitcode</key>
   <false/>
 
-  <!-- Giữ Swift symbols -->
-  <key>stripSwiftSymbols</key>
-  <true/>
-
-  <!-- Đích export -->
-  <key>destination</key>
-  <string>export</string>
-
-  <!-- Xuất universal IPA -->
-  <key>thinning</key>
-  <string>&lt;none&gt;</string>
-
-  <!-- Giữ nguyên certificate -->
-  <key>signingCertificate</key>
-  <string>Apple Distribution</string>
-
-  <!-- Apple sẽ quản lý version/build tự động -->
-  <key>manageAppVersionAndBuildNumber</key>
-  <true/>
 </dict>
 </plist>

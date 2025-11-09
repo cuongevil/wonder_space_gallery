@@ -19,101 +19,94 @@ workflows:
         PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
 
     scripts:
-      - name: 🧹 Clean & deps
+      - name: 🧹 Clean & Install Pods first
         script: |
           set -e
+          echo "🧹 Cleaning Flutter build..."
           flutter clean
           flutter pub get
-          flutter precache --ios
 
-      - name: 🔨 Build Flutter iOS (no codesign) — FIRST
+      - name: 🧩 Ensure Flutter iOS engine headers exist
         script: |
           set -e
-          echo "🔨 flutter build ios --release --no-codesign"
-          flutter build ios --release --no-codesign
-
-          # Fallback: nếu Flutter.h chưa có, tự liên kết từ xcframework
-          if [ ! -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
-            echo "⚠️ Flutter.h missing after build. Trying to link from Flutter.xcframework..."
-            mkdir -p ios/Flutter
-            # Tìm SDK thực
-            if command -v greadlink &>/dev/null; then
-              FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
-            else
-              FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
-            fi
-            if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
-              FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
-            fi
-            FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
-            ENGINE_DIR="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
-
-            # Ưu tiên xcframework slice thiết bị
-            XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
-            if [ -z "$XC_SLICE" ]; then
-              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" | head -n 1)
-            fi
-            if [ -z "$XC_SLICE" ]; then
-              # fallback bất kỳ Flutter.framework
-              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.framework" | head -n 1)
-            fi
-
-            if [ -n "$XC_SLICE" ]; then
-              echo "✅ Linking Flutter.framework from: $XC_SLICE"
-              rm -rf ios/Flutter/Flutter.framework
-              cp -R "$XC_SLICE" ios/Flutter/Flutter.framework
-            else
-              echo "❌ Could not find Flutter.framework slice in engine cache."
-              ls -R "$ENGINE_DIR" || true
-              exit 1
-            fi
-
-            if [ -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
-              echo "✅ Flutter.h now present."
-            else
-              echo "❌ Flutter.h still missing."
-              exit 1
-            fi
+          echo "🔍 Checking Flutter.xcframework..."
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework/Headers" ]; then
+            echo "⚙️ Missing iOS arm64 slice — forcing full precache..."
+            flutter precache --ios --universal
           else
-            echo "✅ Flutter.h present after build."
+            echo "✅ Flutter.xcframework headers exist."
           fi
+          echo "Contents of Flutter.xcframework:"
+          ls -R "$ENGINE_DIR/Flutter.xcframework" || true
 
-      - name: 📦 CocoaPods install — AFTER build
+      - name: 🔨 Flutter Prebuild (Generate Runner)
         script: |
           set -e
-          cd ios
-          pod repo update
-          pod install
-          cd ..
+          echo "🔨 Building Flutter iOS Runner..."
+          flutter build ios --release --no-codesign
+          echo "✅ Flutter iOS build completed."
 
-      - name: 🚀 Archive (App Store)
+      - name: 🧾 Create exportOptions.plist
         script: |
           set -e
+          mkdir -p build/ios
+          cat > build/ios/exportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+          echo "✅ exportOptions.plist created."
+
+      - name: 🚀 Build iOS Archive
+        script: |
+          set -e
+          echo "🚀 Running Xcode archive..."
           mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
+            -destination 'generic/platform=iOS,name=Any iOS Device' \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES
+            CODE_SIGNING_REQUIRED=YES \
+            | tee build_log.txt | xcpretty
+          echo "✅ Archive ready at build/ios/archive/Runner.xcarchive"
 
-      - name: 📦 Export IPA (App Store)
+      - name: 📦 Export signed IPA
         script: |
           set -e
+          echo "📦 Exporting signed IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions_appstore.plist \
+            -exportOptionsPlist build/ios/exportOptions.plist \
             -exportPath build/ios/ipa
-          echo "✅ IPA exported."
+          echo "✅ IPA exported successfully."
 
-      - name: 📋 List IPA
+      - name: 📋 Show IPA
         script: |
+          echo "📂 IPA files:"
           find build/ios/ipa -type f -name "*.ipa"
 
     artifacts:
@@ -139,73 +132,60 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧹 Clean & deps
+      - name: 🧹 Clean & Install Pods
         script: |
           set -e
           flutter clean
           flutter pub get
-          flutter precache --ios
 
-      - name: 🔨 Build Flutter iOS (no codesign) — FIRST
+      - name: 🧩 Ensure Flutter iOS engine headers exist
         script: |
           set -e
-          flutter build ios --release --no-codesign
-
-          # Fallback: tự liên kết Flutter.framework nếu thiếu header
-          if [ ! -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
-            echo "⚠️ Flutter.h missing after build. Linking from xcframework..."
-            mkdir -p ios/Flutter
-            if command -v greadlink &>/dev/null; then
-              FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
-            else
-              FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
-            fi
-            if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
-              FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
-            fi
-            FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
-            ENGINE_DIR="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
-
-            XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
-            if [ -z "$XC_SLICE" ]; then
-              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" | head -n 1)
-            fi
-            if [ -z "$XC_SLICE" ]; then
-              XC_SLICE=$(find "$ENGINE_DIR" -type d -path "*/Flutter.framework" | head -n 1)
-            fi
-
-            if [ -n "$XC_SLICE" ]; then
-              echo "✅ Linking Flutter.framework from: $XC_SLICE"
-              rm -rf ios/Flutter/Flutter.framework
-              cp -R "$XC_SLICE" ios/Flutter/Flutter.framework
-            else
-              echo "❌ Could not find Flutter.framework slice."
-              ls -R "$ENGINE_DIR" || true
-              exit 1
-            fi
-
-            if [ -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
-              echo "✅ Flutter.h now present."
-            else
-              echo "❌ Flutter.h still missing."
-              exit 1
-            fi
+          echo "🔍 Checking Flutter.xcframework..."
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework/Headers" ]; then
+            echo "⚙️ Missing iOS arm64 slice — forcing full precache..."
+            flutter precache --ios --universal
           else
-            echo "✅ Flutter.h present after build."
+            echo "✅ Flutter.xcframework headers exist."
           fi
+          echo "Contents of Flutter.xcframework:"
+          ls -R "$ENGINE_DIR/Flutter.xcframework" || true
 
-      - name: 📦 CocoaPods install — AFTER build
+      - name: 🔨 Build Flutter iOS (no codesign)
         script: |
           set -e
-          cd ios
-          pod repo update
-          pod install
-          cd ..
+          echo "📦 Building Flutter iOS app (no codesign)..."
+          flutter build ios --release --no-codesign
+          echo "✅ Flutter iOS build completed successfully."
 
-      - name: 🚀 Archive (Ad Hoc)
+      - name: 🧾 Create exportOptions.plist (Ad Hoc)
         script: |
-          set -e
-          mkdir -p build/ios/archive
+          mkdir -p build/ios
+          cat > build/ios/exportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 🚀 Build iOS Archive (Ad Hoc)
+        script: |
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -219,18 +199,17 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export IPA (Ad Hoc)
+      - name: 📦 Export signed IPA
         script: |
-          set -e
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions_adhoc.plist \
+            -exportOptionsPlist build/ios/exportOptions.plist \
             -exportPath build/ios/ipa
-          echo "✅ AdHoc IPA exported."
 
-      - name: 📋 List IPA
+      - name: 📋 Show IPA Path
         script: |
-          find build/ios/ipa -type f -name "*.ipa"
+          echo "📂 IPA ready at:"
+          find build/ios/ipa -name "*.ipa"
 
     artifacts:
       - build/ios/ipa/*.ipa

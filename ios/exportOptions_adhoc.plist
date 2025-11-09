@@ -2,49 +2,49 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Phương thức phát hành: Ad Hoc -->
+
+  <!-- Phương thức phát hành -->
   <key>method</key>
   <string>ad-hoc</string>
 
-  <!-- Team ID -->
+  <!-- Team ID (chuẩn Apple Developer Team) -->
   <key>teamID</key>
   <string>CS2UV6F3ZY</string>
 
-  <!-- Manual Signing -->
-  <key>signingStyle</key>
-  <string>manual</string>
-
-  <!-- Provisioning Profile -->
+  <!-- Provisioning profile cho từng bundle ID -->
   <key>provisioningProfiles</key>
   <dict>
     <key>com.ctmd.wonderforge.wonderspace.gallery</key>
     <string>wonderspace_gallery_adhoc</string>
   </dict>
 
-  <!-- Không cần upload symbols -->
-  <key>uploadSymbols</key>
-  <false/>
+  <!-- Phong cách ký thủ công -->
+  <key>signingStyle</key>
+  <string>manual</string>
 
-  <!-- Không dùng bitcode -->
+  <!-- Certificate phát hành -->
+  <key>signingCertificate</key>
+  <string>Apple Distribution</string>
+
+  <!-- Vô hiệu hóa Bitcode (Apple đã ngừng hỗ trợ) -->
   <key>compileBitcode</key>
   <false/>
-  <key>uploadBitcode</key>
-  <false/>
 
-  <!-- Giữ Swift symbols -->
-  <key>stripSwiftSymbols</key>
-  <true/>
-
-  <!-- Đích export -->
-  <key>destination</key>
-  <string>export</string>
-
-  <!-- Xuất universal IPA -->
+  <!-- Xuất ra universal IPA (không chia mảnh) -->
   <key>thinning</key>
   <string>&lt;none&gt;</string>
 
-  <!-- Giữ nguyên certificate -->
-  <key>signingCertificate</key>
-  <string>Apple Distribution</string>
+  <!-- Giữ lại Swift symbols để phân tích crash -->
+  <key>stripSwiftSymbols</key>
+  <true/>
+
+  <!-- Mục tiêu export -->
+  <key>destination</key>
+  <string>export</string>
+
+  <!-- Cho phép quản lý phiên bản ứng dụng -->
+  <key>manageAppVersionAndBuildNumber</key>
+  <true/>
+
 </dict>
 </plist>
