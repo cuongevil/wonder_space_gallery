@@ -38,44 +38,49 @@ workflows:
           echo "🔨 Detecting Flutter.framework..."
           mkdir -p ios/Flutter
 
-          # Detect Flutter SDK path safely (Codemagic M1/M2, macOS)
+          # Detect Flutter SDK root safely for macOS / Codemagic M1/M2
           if command -v greadlink &>/dev/null; then
             FLUTTER_BIN_PATH=$(greadlink -f "$(which flutter)")
           else
             FLUTTER_BIN_PATH=$(readlink "$(which flutter)" || which flutter)
           fi
 
-          # Resolve deeper symlink if needed
           if [[ ! "$FLUTTER_BIN_PATH" == */flutter ]]; then
             FLUTTER_BIN_PATH=$(ls -l "$(which flutter)" | awk '{print $NF}')
           fi
 
           FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
-
           echo "📍 Flutter SDK root detected at: $FLUTTER_SDK_ROOT"
 
-          # Try to find Flutter.framework
-          FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
+          FLUTTER_ENGINE_PATH="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
+          FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
 
           if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "⚠️ Flutter.framework not found, running flutter precache..."
             flutter precache --ios
-            FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
+            FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
           fi
 
-          if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
-            echo "❌ Could not locate Flutter.framework after precache!"
-            echo "🔍 Dumping Flutter engine contents:"
-            ls -R "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" || true
-            exit 1
-          else
+          if [ -n "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "✅ Found Flutter.framework at: $FLUTTER_FRAMEWORK_PATH"
             cp -R "$FLUTTER_FRAMEWORK_PATH" ios/Flutter/
+          else
+            echo "❌ Could not locate Flutter.framework even after precache!"
+            ls -R "$FLUTTER_ENGINE_PATH" || true
+            exit 1
           fi
 
           echo "📦 Building Flutter iOS app (no codesign)..."
           flutter build ios --release --no-codesign
           echo "✅ Flutter iOS build completed successfully."
+
+          echo "📂 Checking Flutter.h..."
+          if [ -f "ios/Flutter/Flutter.framework/Headers/Flutter.h" ]; then
+            echo "✅ Flutter.h found."
+          else
+            echo "⚠️ Flutter.h missing! Build may fail."
+            find ios/Flutter -name "Flutter.h" || true
+          fi
 
       - name: 🚀 Build iOS Archive (App Store)
         script: |
@@ -162,21 +167,22 @@ workflows:
           FLUTTER_SDK_ROOT=$(dirname $(dirname "$FLUTTER_BIN_PATH"))
           echo "📍 Flutter SDK root detected at: $FLUTTER_SDK_ROOT"
 
-          FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
+          FLUTTER_ENGINE_PATH="${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine"
+          FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
+
           if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "⚠️ Flutter.framework not found, running flutter precache..."
             flutter precache --ios
-            FLUTTER_FRAMEWORK_PATH=$(find "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" -name "Flutter.framework" -type d 2>/dev/null | head -n 1)
+            FLUTTER_FRAMEWORK_PATH=$(find "$FLUTTER_ENGINE_PATH" -type d -path "*/Flutter.framework" | grep -E "darwin|ios" | head -n 1)
           fi
 
-          if [ -z "$FLUTTER_FRAMEWORK_PATH" ]; then
-            echo "❌ Could not locate Flutter.framework after precache!"
-            echo "🔍 Dumping Flutter engine contents:"
-            ls -R "${FLUTTER_SDK_ROOT}/bin/cache/artifacts/engine" || true
-            exit 1
-          else
+          if [ -n "$FLUTTER_FRAMEWORK_PATH" ]; then
             echo "✅ Found Flutter.framework at: $FLUTTER_FRAMEWORK_PATH"
             cp -R "$FLUTTER_FRAMEWORK_PATH" ios/Flutter/
+          else
+            echo "❌ Could not locate Flutter.framework even after precache!"
+            ls -R "$FLUTTER_ENGINE_PATH" || true
+            exit 1
           fi
 
           echo "📦 Building Flutter iOS app (no codesign)..."
