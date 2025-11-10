@@ -1,7 +1,7 @@
 # ===========================================
-# Wonder Space Gallery - Podfile v9.0 FIXED
-# ✅ Full support for Codemagic auto-build
-# ✅ Fix 'Flutter/Flutter.h file not found'
+# Wonder Space Gallery - Podfile v9.1 FINAL
+# ✅ Fix Flutter.h + Linker symbols missing
+# ✅ Stable for Codemagic AdHoc & AppStore builds
 # ===========================================
 
 platform :ios, '15.0'
@@ -32,33 +32,39 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
-# ===========================================
-#  POST INSTALL FIXES
-# ===========================================
 post_install do |installer|
-  puts "🚧 Applying post_install fixes for Flutter headers..."
+  puts "🚧 Applying post_install fixes (linker + headers)..."
+
+  flutter_engine_dir = `find #{Dir.home}/programs/flutter/bin/cache/artifacts/engine -type d -name "Flutter.framework" | head -n 1`.strip
+  unless flutter_engine_dir.empty?
+    puts "🔗 Found Flutter.framework at: #{flutter_engine_dir}"
+  end
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['ENABLE_BITCODE'] = 'NO'
-
-      # 🚀 Allow unsigned pods; Codemagic handles signing later
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
 
-      # ✅ Force Flutter.framework include path
-      flutter_engine_dir = `find #{Dir.home}/programs/flutter/bin/cache/artifacts/engine -type d -name "Flutter.framework" | head -n 1`.strip
+      # ✅ Include Flutter headers and framework search paths
       unless flutter_engine_dir.empty?
         config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
         config.build_settings['FRAMEWORK_SEARCH_PATHS'] << File.dirname(flutter_engine_dir)
         config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
         config.build_settings['HEADER_SEARCH_PATHS'] << "#{flutter_engine_dir}/Headers"
       end
+
+      # ✅ Ensure linker includes Flutter symbols
+      config.build_settings['OTHER_LDFLAGS'] ||= ['$(inherited)']
+      config.build_settings['OTHER_LDFLAGS'] << '-framework Flutter'
+
+      # ✅ Ensure Flutter.framework is embedded properly
+      config.build_settings['LD_RUNPATH_SEARCH_PATHS'] = ['$(inherited)', '@executable_path/Frameworks']
     end
   end
 
-  # Manual signing setup for Runner target only
+  # Manual signing setup for Runner target
   installer.aggregate_targets.each do |aggregate_target|
     aggregate_target.user_project.native_targets.each do |target|
       next unless target.name == 'Runner'
@@ -71,5 +77,5 @@ post_install do |installer|
     end
   end
 
-  puts "✅ post_install completed (Flutter.framework search path injected)."
+  puts "✅ post_install completed: headers + linker flags fixed."
 end
