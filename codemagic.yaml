@@ -28,18 +28,32 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧱 Fix Flutter.framework (v10.3.1 auto-path)
+      - name: 🧱 Fix Flutter.framework (v10.3.2 universal)
         script: |
           set -e
-          echo "🧱 Precache + auto-detect Flutter.framework slice..."
+          echo "🧱 Precache + universal auto-detect Flutter.framework slice..."
           flutter precache --ios
 
-          FLUTTER_BIN=$(which flutter)
+          FLUTTER_BIN=$(which flutter || true)
+          if [ -z "$FLUTTER_BIN" ]; then
+            echo "⚠️ Could not locate flutter binary via PATH"
+            FLUTTER_BIN="/Users/builder/programs/flutter/bin/flutter"
+          fi
+          if [ ! -f "$FLUTTER_BIN" ]; then
+            echo "❌ Flutter binary not found at $FLUTTER_BIN"
+            exit 1
+          fi
+
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
+          if [ ! -d "$FLUTTER_ROOT/bin/cache/artifacts/engine" ]; then
+            echo "⚠️ Fallback: trying /Users/builder/programs/flutter"
+            FLUTTER_ROOT="/Users/builder/programs/flutter"
+          fi
+
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
           TARGET_DIR="ios/Flutter"
+          echo "🔍 Flutter engine dir resolved to: $ENGINE_DIR"
 
-          echo "🔍 Flutter engine dir: $ENGINE_DIR"
           mkdir -p "$TARGET_DIR"
 
           FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
@@ -51,7 +65,8 @@ workflows:
             echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
             cp -R "$FRAMEWORK_PATH" "$TARGET_DIR/"
           else
-            echo "❌ Could not find Flutter.framework slice in $ENGINE_DIR"
+            echo "❌ Could not find Flutter.framework slice in:"
+            echo "$ENGINE_DIR"
             find "$ENGINE_DIR" -maxdepth 6 -type d -name "Flutter.framework" || true
             exit 1
           fi
@@ -94,10 +109,12 @@ workflows:
             -exportOptionsPlist ios/exportOptions_appstore.plist \
             -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
+
       - name: 📋 Show IPA Path
         script: |
           echo "📂 IPA ready:"
           find build/ios/ipa -name "*.ipa"
+
     artifacts:
       - build/ios/ipa/*.ipa
 
@@ -129,18 +146,32 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧱 Fix Flutter.framework (v10.3.1 auto-path)
+      - name: 🧱 Fix Flutter.framework (v10.3.2 universal)
         script: |
           set -e
-          echo "🧱 Precache + auto-detect Flutter.framework slice..."
+          echo "🧱 Precache + universal auto-detect Flutter.framework slice..."
           flutter precache --ios
 
-          FLUTTER_BIN=$(which flutter)
+          FLUTTER_BIN=$(which flutter || true)
+          if [ -z "$FLUTTER_BIN" ]; then
+            echo "⚠️ Could not locate flutter binary via PATH"
+            FLUTTER_BIN="/Users/builder/programs/flutter/bin/flutter"
+          fi
+          if [ ! -f "$FLUTTER_BIN" ]; then
+            echo "❌ Flutter binary not found at $FLUTTER_BIN"
+            exit 1
+          fi
+
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
+          if [ ! -d "$FLUTTER_ROOT/bin/cache/artifacts/engine" ]; then
+            echo "⚠️ Fallback: trying /Users/builder/programs/flutter"
+            FLUTTER_ROOT="/Users/builder/programs/flutter"
+          fi
+
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
           TARGET_DIR="ios/Flutter"
+          echo "🔍 Flutter engine dir resolved to: $ENGINE_DIR"
 
-          echo "🔍 Flutter engine dir: $ENGINE_DIR"
           mkdir -p "$TARGET_DIR"
 
           FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
@@ -152,7 +183,8 @@ workflows:
             echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
             cp -R "$FRAMEWORK_PATH" "$TARGET_DIR/"
           else
-            echo "❌ Could not find Flutter.framework slice in $ENGINE_DIR"
+            echo "❌ Could not find Flutter.framework slice in:"
+            echo "$ENGINE_DIR"
             find "$ENGINE_DIR" -maxdepth 6 -type d -name "Flutter.framework" || true
             exit 1
           fi
@@ -195,9 +227,11 @@ workflows:
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
+
       - name: 📋 Show IPA Path
         script: |
           echo "📂 IPA ready:"
           find build/ios/ipa -name "*.ipa"
+
     artifacts:
       - build/ios/ipa/*.ipa
