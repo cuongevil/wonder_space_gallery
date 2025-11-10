@@ -3,7 +3,6 @@ workflows:
     name: iOS Release (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
-
     environment:
       flutter: stable
       xcode: latest
@@ -29,61 +28,38 @@ workflows:
           pod install
           cd ..
 
-      - name: 🔨 Link Flutter headers (engine auto-scan)
+      - name: 🧱 Fix Flutter.framework (v10.3 definitive)
         script: |
           set -e
-          echo "🔗 Linking Flutter.xcframework headers..."
-          mkdir -p ios/Flutter
-          FLUTTER_BIN=$(which flutter)
-          ENGINE_BASE=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_BASE" ]; then
-            ENGINE_BASE="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
-          fi
-
-          FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-release/*/Flutter.framework" -print -quit)
+          echo "🧱 Precache + link Flutter.framework slice..."
+          flutter precache --ios
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          TARGET_DIR=ios/Flutter
+          mkdir -p "$TARGET_DIR"
+          FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
           if [ -z "$FRAMEWORK_PATH" ]; then
-            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios/*/Flutter.framework" -print -quit)
+            FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
           fi
-          if [ -z "$FRAMEWORK_PATH" ]; then
-            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-profile/*/Flutter.framework" -print -quit)
-          fi
-          if [ -z "$FRAMEWORK_PATH" ]; then
-            echo "❌ Flutter.framework not found"
-            find "$ENGINE_BASE" -maxdepth 6 -type d -name "Flutter.framework"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
+            cp -R "$FRAMEWORK_PATH" "$TARGET_DIR/"
+          else
+            echo "❌ Flutter.framework slice missing"
+            find "$ENGINE_DIR" -maxdepth 6 -type d -name "Flutter.framework" || true
             exit 1
           fi
-          echo "✅ Found: $FRAMEWORK_PATH"
-          cp -R "$FRAMEWORK_PATH" ios/Flutter/
-          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Missing headers"
-
-      - name: 🧩 Ensure iOS config files exist (v10.2)
-        script: |
-          set -e
-          echo "🧩 Checking iOS Flutter xcconfig & Pods xcfilelists..."
-          mkdir -p ios/Flutter
-
-          if [ ! -f ios/Flutter/Release.xcconfig ]; then
-            echo "⚠️ Missing Release.xcconfig — regenerating..."
-            echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
-          fi
-          if [ ! -f ios/Flutter/Debug.xcconfig ]; then
-            echo '#include "Generated.xcconfig"' > ios/Flutter/Debug.xcconfig
-          fi
-
-          echo "🔄 Running flutter precache..."
-          flutter precache --ios
-
-          echo "🧱 Regenerating missing xcfilelists..."
+          echo "📄 Ensure Release.xcconfig"
+          echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
+          echo "📄 Rebuild xcfilelist..."
           cd ios
-          PODS_TARGET_DIR="Pods/Target Support Files/Pods-Runner"
-          mkdir -p "$PODS_TARGET_DIR"
-
-          echo "Pods/../Flutter/Flutter.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
-          echo "Pods/../Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
-          echo "✅ xcfilelists ready."
+          PODS_DIR="Pods/Target Support Files/Pods-Runner"
+          mkdir -p "$PODS_DIR"
+          echo "Pods/../Flutter/Flutter.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
+          echo "Pods/../Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
           cd ..
+          echo "✅ Flutter.framework + xcconfig fixed."
 
       - name: 🚀 Build iOS Archive (App Store)
         script: |
@@ -111,12 +87,10 @@ workflows:
             -exportOptionsPlist ios/exportOptions_appstore.plist \
             -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
-
       - name: 📋 Show IPA Path
         script: |
           echo "📂 IPA ready:"
           find build/ios/ipa -name "*.ipa"
-
     artifacts:
       - build/ios/ipa/*.ipa
 
@@ -124,7 +98,6 @@ workflows:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
-
     environment:
       flutter: stable
       xcode: latest
@@ -149,56 +122,36 @@ workflows:
           pod install
           cd ..
 
-      - name: 🔨 Link Flutter headers (engine auto-scan)
+      - name: 🧱 Fix Flutter.framework (v10.3 definitive)
         script: |
           set -e
-          echo "🔗 Linking Flutter.xcframework headers..."
-          mkdir -p ios/Flutter
-          FLUTTER_BIN=$(which flutter)
-          ENGINE_BASE=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_BASE" ]; then
-            ENGINE_BASE="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
-          fi
-          FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-release/*/Flutter.framework" -print -quit)
+          echo "🧱 Precache + link Flutter.framework slice..."
+          flutter precache --ios
+          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          TARGET_DIR=ios/Flutter
+          mkdir -p "$TARGET_DIR"
+          FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
           if [ -z "$FRAMEWORK_PATH" ]; then
-            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios/*/Flutter.framework" -print -quit)
+            FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
           fi
-          if [ -z "$FRAMEWORK_PATH" ]; then
-            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-profile/*/Flutter.framework" -print -quit)
-          fi
-          if [ -z "$FRAMEWORK_PATH" ]; then
-            echo "❌ Flutter.framework not found"
-            find "$ENGINE_BASE" -maxdepth 6 -type d -name "Flutter.framework"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
+            cp -R "$FRAMEWORK_PATH" "$TARGET_DIR/"
+          else
+            echo "❌ Flutter.framework slice missing"
+            find "$ENGINE_DIR" -maxdepth 6 -type d -name "Flutter.framework" || true
             exit 1
           fi
-          echo "✅ Found: $FRAMEWORK_PATH"
-          cp -R "$FRAMEWORK_PATH" ios/Flutter/
-          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Missing headers"
-
-      - name: 🧩 Ensure iOS config files exist (v10.2)
-        script: |
-          set -e
-          echo "🧩 Checking iOS Flutter xcconfig & Pods xcfilelists..."
-          mkdir -p ios/Flutter
-
-          if [ ! -f ios/Flutter/Release.xcconfig ]; then
-            echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
-          fi
-          if [ ! -f ios/Flutter/Debug.xcconfig ]; then
-            echo '#include "Generated.xcconfig"' > ios/Flutter/Debug.xcconfig
-          fi
-          flutter precache --ios
-
+          echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
           cd ios
-          PODS_TARGET_DIR="Pods/Target Support Files/Pods-Runner"
-          mkdir -p "$PODS_TARGET_DIR"
-
-          echo "Pods/../Flutter/Flutter.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
-          echo "Pods/../Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
+          PODS_DIR="Pods/Target Support Files/Pods-Runner"
+          mkdir -p "$PODS_DIR"
+          echo "Pods/../Flutter/Flutter.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
+          echo "Pods/../Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
           cd ..
-          echo "✅ xcconfig & xcfilelist regenerated."
+          echo "✅ Flutter.framework linked."
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
@@ -226,11 +179,9 @@ workflows:
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
-
       - name: 📋 Show IPA Path
         script: |
           echo "📂 IPA ready:"
           find build/ios/ipa -name "*.ipa"
-
     artifacts:
       - build/ios/ipa/*.ipa
