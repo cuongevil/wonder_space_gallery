@@ -1,127 +1,9 @@
 workflows:
-  ios_release_manual:
-    name: iOS Release (Wonder Space Gallery)
-    instance_type: mac_mini_m2
-    max_build_duration: 120
-    environment:
-      flutter: stable
-      xcode: latest
-      groups:
-        - ios_credentials
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
-      vars:
-        TEAM_ID: "CS2UV6F3ZY"
-        BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
-        CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
-        PROFILE_NAME: "WonderSpaceGallery_AppStore_Profile"
-
-    scripts:
-      - name: 🧹 Clean & Install Pods
-        script: |
-          set -e
-          flutter clean
-          flutter pub get
-          cd ios
-          pod repo update
-          pod install
-          cd ..
-
-      - name: 🧱 Fix Flutter.framework (v10.3.2 universal)
-        script: |
-          set -e
-          echo "🧱 Precache + universal auto-detect Flutter.framework slice..."
-          flutter precache --ios
-
-          FLUTTER_BIN=$(which flutter || true)
-          if [ -z "$FLUTTER_BIN" ]; then
-            echo "⚠️ Could not locate flutter binary via PATH"
-            FLUTTER_BIN="/Users/builder/programs/flutter/bin/flutter"
-          fi
-          if [ ! -f "$FLUTTER_BIN" ]; then
-            echo "❌ Flutter binary not found at $FLUTTER_BIN"
-            exit 1
-          fi
-
-          FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
-          if [ ! -d "$FLUTTER_ROOT/bin/cache/artifacts/engine" ]; then
-            echo "⚠️ Fallback: trying /Users/builder/programs/flutter"
-            FLUTTER_ROOT="/Users/builder/programs/flutter"
-          fi
-
-          ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
-          TARGET_DIR="ios/Flutter"
-          echo "🔍 Flutter engine dir resolved to: $ENGINE_DIR"
-
-          mkdir -p "$TARGET_DIR"
-
-          FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
-          if [ -z "$FRAMEWORK_PATH" ]; then
-            FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
-          fi
-
-          if [ -d "$FRAMEWORK_PATH" ]; then
-            echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
-            cp -R "$FRAMEWORK_PATH" "$TARGET_DIR/"
-          else
-            echo "❌ Could not find Flutter.framework slice in:"
-            echo "$ENGINE_DIR"
-            find "$ENGINE_DIR" -maxdepth 6 -type d -name "Flutter.framework" || true
-            exit 1
-          fi
-
-          echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
-
-          cd ios
-          PODS_DIR="Pods/Target Support Files/Pods-Runner"
-          mkdir -p "$PODS_DIR"
-          echo "Pods/../Flutter/Flutter.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
-          echo "Pods/../Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
-          cd ..
-          echo "✅ Flutter.framework + xcfilelist ready."
-
-      - name: 🚀 Build iOS Archive (App Store)
-        script: |
-          set -e
-          flutter build ios --release --no-codesign
-          mkdir -p build/ios/archive
-          xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
-            CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES
-
-      - name: 📦 Export signed IPA (App Store)
-        script: |
-          set -e
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions_appstore.plist \
-            -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully."
-
-      - name: 📋 Show IPA Path
-        script: |
-          echo "📂 IPA ready:"
-          find build/ios/ipa -name "*.ipa"
-
-    artifacts:
-      - build/ios/ipa/*.ipa
-
   ios_adhoc_manual:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
+
     environment:
       flutter: stable
       xcode: latest
@@ -143,63 +25,34 @@ workflows:
           flutter clean
           flutter pub get
           cd ios
+          pod repo update
           pod install
           cd ..
 
-      - name: 🧱 Fix Flutter.framework (v10.3.2 universal)
+      - name: 🧱 Fix Flutter.framework slice (v10.4 definitive)
         script: |
           set -e
-          echo "🧱 Precache + universal auto-detect Flutter.framework slice..."
+          echo "🧱 Detecting correct Flutter.framework slice for iOS device..."
+
           flutter precache --ios
-
-          FLUTTER_BIN=$(which flutter || true)
-          if [ -z "$FLUTTER_BIN" ]; then
-            echo "⚠️ Could not locate flutter binary via PATH"
-            FLUTTER_BIN="/Users/builder/programs/flutter/bin/flutter"
-          fi
-          if [ ! -f "$FLUTTER_BIN" ]; then
-            echo "❌ Flutter binary not found at $FLUTTER_BIN"
-            exit 1
-          fi
-
+          FLUTTER_BIN=$(which flutter)
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
-          if [ ! -d "$FLUTTER_ROOT/bin/cache/artifacts/engine" ]; then
-            echo "⚠️ Fallback: trying /Users/builder/programs/flutter"
-            FLUTTER_ROOT="/Users/builder/programs/flutter"
-          fi
-
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
-          TARGET_DIR="ios/Flutter"
-          echo "🔍 Flutter engine dir resolved to: $ENGINE_DIR"
 
-          mkdir -p "$TARGET_DIR"
+          mkdir -p ios/Flutter
+          echo "🔍 Searching for device slice (ios-arm64)..."
+          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios*/Flutter.xcframework/ios-arm64/Flutter.framework" | grep -v "simulator" | head -n 1)
 
-          FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
-          if [ -z "$FRAMEWORK_PATH" ]; then
-            FRAMEWORK_PATH=$(find "$ENGINE_DIR" -type d -path "*/ios/Flutter.xcframework/ios-arm64/Flutter.framework" -print -quit)
-          fi
-
-          if [ -d "$FRAMEWORK_PATH" ]; then
-            echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
-            cp -R "$FRAMEWORK_PATH" "$TARGET_DIR/"
-          else
-            echo "❌ Could not find Flutter.framework slice in:"
-            echo "$ENGINE_DIR"
-            find "$ENGINE_DIR" -maxdepth 6 -type d -name "Flutter.framework" || true
+          if [ -z "$DEVICE_SLICE" ]; then
+            echo "❌ Could not find ios-arm64 slice! Listing available:"
+            find "$ENGINE_DIR" -type d -name "Flutter.framework" | sed 's/^/   /'
             exit 1
           fi
 
-          echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
-
-          cd ios
-          PODS_DIR="Pods/Target Support Files/Pods-Runner"
-          mkdir -p "$PODS_DIR"
-          echo "Pods/../Flutter/Flutter.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
-          echo "Pods/../Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
-          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
-          cd ..
-          echo "✅ Flutter.framework + xcfilelist ready."
+          echo "✅ Using Flutter.framework slice: $DEVICE_SLICE"
+          rm -rf ios/Flutter/Flutter.framework
+          cp -R "$DEVICE_SLICE" ios/Flutter/
+          echo "✅ Flutter.framework copied successfully."
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
