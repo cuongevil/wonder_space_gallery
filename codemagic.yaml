@@ -19,50 +19,56 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧹 Clean & Install Pods
+      - name: 🧹 Clean Flutter & Pods
         script: |
           set -e
+          echo "🧹 Cleaning Flutter & Pod cache..."
           flutter clean
           flutter pub get
+          rm -rf ~/Library/Developer/Xcode/DerivedData
           cd ios
+          pod deintegrate || true
           pod repo update
           pod install
           cd ..
+          echo "✅ Clean completed."
 
-      - name: 🧱 Force correct Flutter.framework slice (v10.7 definitive)
+      - name: 🧱 Force correct Flutter.framework (v10.8 definitive)
         script: |
           set -e
-          echo "🧱 Forcing correct Flutter.framework slice (ios-release / ios-arm64)..."
+          echo "🧱 Forcing Flutter engine to rebuild ios-release slice..."
 
-          flutter precache --ios
+          flutter precache --ios --force
+          flutter build ios --release --no-codesign || true  # trigger full release build to cache engine
+
           FLUTTER_BIN=$(which flutter)
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
           mkdir -p ios/Flutter
 
-          DEVICE_SLICE="$ENGINE_DIR/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework"
-          echo "🔍 Checking slice: $DEVICE_SLICE"
+          echo "🔍 Removing all ios-profile slices..."
+          find "$ENGINE_DIR" -type d -path "*/ios-profile*" -exec rm -rf {} + || true
 
+          DEVICE_SLICE="$ENGINE_DIR/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework"
           if [ ! -d "$DEVICE_SLICE" ]; then
-            echo "⚠️ Not found at ios-release, trying fallback..."
             DEVICE_SLICE="/Users/builder/programs/flutter/bin/cache/artifacts/engine/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework"
           fi
 
           if [ ! -d "$DEVICE_SLICE" ]; then
-            echo "❌ Could not locate Flutter.framework ios-arm64 slice!"
-            echo "Available Flutter.framework paths:"
-            find "$ENGINE_DIR" -type d -name "Flutter.framework" 2>/dev/null | sed 's/^/   /'
+            echo "❌ Flutter.framework ios-arm64 slice not found!"
+            find "$ENGINE_DIR" -type d -name "Flutter.framework" | sed 's/^/   /'
             exit 1
           fi
 
+          echo "✅ Found Flutter.framework at: $DEVICE_SLICE"
           rm -rf ios/Flutter/Flutter.framework
           cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Copied Flutter.framework from ios-release/ios-arm64 slice."
+          echo "✅ Copied Flutter.framework (ios-release arm64 slice)."
 
-      - name: 🧩 Regenerate missing Xcode config & xcfilelists (v10.7)
+      - name: 🧩 Regenerate missing xcconfig & xcfilelists
         script: |
           set -e
-          echo "🧩 Regenerating missing Xcode configuration and filelists..."
+          echo "🧩 Regenerating missing Xcode configs..."
           mkdir -p ios/Flutter
           cat > ios/Flutter/Release.xcconfig <<EOF
           #include "Generated.xcconfig"
@@ -77,12 +83,12 @@ workflows:
           echo "build/ios/Release-iphoneos/Pods_Runner.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
           echo "Pods/../Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
           echo "build/ios/Release-iphoneos/Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
-          echo "✅ Recreated missing Pods xcfilelist files"
+          echo "✅ Recreated xcfilelists."
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
           set -e
-          echo "🚀 Building iOS archive (AdHoc)..."
+          echo "🚀 Building iOS archive..."
           flutter build ios --release --no-codesign
           mkdir -p build/ios/archive
           xcodebuild archive \
@@ -107,9 +113,9 @@ workflows:
             -exportPath build/ios/ipa
           echo "✅ IPA exported successfully."
 
-      - name: 📋 Show IPA Path
+      - name: 📋 Show IPA path
         script: |
-          echo "📂 IPA ready at:"
+          echo "📂 IPA ready:"
           find build/ios/ipa -name "*.ipa"
 
     artifacts:
