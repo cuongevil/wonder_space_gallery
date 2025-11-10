@@ -29,58 +29,43 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧩 Ensure Flutter.xcframework exists
-        script: |
-          set -e
-          echo "🔍 Checking Flutter.xcframework..."
-          FLUTTER_BIN=$(which flutter)
-          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_DIR" ]; then
-            echo "⚙️ Using Codemagic engine path..."
-            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
-          fi
-          if [ ! -d "$ENGINE_DIR/Flutter.xcframework" ]; then
-            echo "⚙️ Flutter.xcframework not found — running full precache..."
-            flutter precache --ios --universal
-          fi
-          echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
-
-      - name: 🔨 Link Flutter headers (v9.2 universal)
+      - name: 🔨 Link Flutter headers (v10.0 full engine scan)
         script: |
           #!/usr/bin/env bash
           set -e
-          echo "🔗 Linking Flutter.xcframework headers (universal path fix v9.2)..."
+          echo "🔗 Linking Flutter.xcframework headers (auto full-scan engine v10.0)..."
 
           mkdir -p ios/Flutter
-
           FLUTTER_BIN=$(which flutter)
-          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
-
-          if [ ! -d "$ENGINE_DIR" ]; then
-            echo "⚙️ Default path not found, switching to Codemagic path..."
-            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
+          ENGINE_BASE=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_BASE" ]; then
+            ENGINE_BASE="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
           fi
 
-          XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
+          echo "🔍 Searching engine base: $ENGINE_BASE"
 
-          if [ ! -d "$XCFRAMEWORK" ]; then
-            echo "⚙️ Flutter.xcframework not found, running precache..."
-            flutter precache --ios --universal
+          # Ưu tiên ios-release
+          FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-release/*/Flutter.framework" -print -quit)
+          # Nếu không có, fallback sang ios
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios/*/Flutter.framework" -print -quit)
+          fi
+          # Nếu vẫn không có, fallback sang ios-profile
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-profile/*/Flutter.framework" -print -quit)
           fi
 
-          FRAMEWORK_PATH=$(find "$XCFRAMEWORK" -type d -path "*/Flutter.framework" | head -n 1)
-
-          if [ -d "$FRAMEWORK_PATH" ]; then
-            echo "✅ Found Flutter.framework slice at: $FRAMEWORK_PATH"
-            cp -R "$FRAMEWORK_PATH" ios/Flutter/
-          else
-            echo "❌ Could not locate Flutter.framework in any xcframework slice!"
-            find "$ENGINE_DIR" -maxdepth 5 -type d -name "Flutter.framework"
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            echo "❌ Could not locate Flutter.framework anywhere!"
+            find "$ENGINE_BASE" -maxdepth 6 -type d -name "Flutter.framework" || true
             exit 1
           fi
 
-          echo "📁 Headers:"
-          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers not found"
+          echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
+          cp -R "$FRAMEWORK_PATH" ios/Flutter/
+          echo "✅ Copied Flutter.framework → ios/Flutter/"
+          echo "📁 Headers check:"
+          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers missing!"
 
       - name: 🚀 Build iOS Archive (App Store)
         script: |
@@ -146,47 +131,40 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧩 Ensure Flutter.xcframework exists
-        script: |
-          set -e
-          echo "🔍 Checking Flutter.xcframework..."
-          FLUTTER_BIN=$(which flutter)
-          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_DIR" ]; then
-            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
-          fi
-          if [ ! -d "$ENGINE_DIR/Flutter.xcframework" ]; then
-            flutter precache --ios --universal
-          fi
-          echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
-
-      - name: 🔨 Link Flutter headers (v9.2 universal)
+      - name: 🔨 Link Flutter headers (v10.0 full engine scan)
         script: |
           #!/usr/bin/env bash
           set -e
-          echo "🔗 Linking Flutter.xcframework headers (universal path fix v9.2)..."
+          echo "🔗 Linking Flutter.xcframework headers (auto full-scan engine v10.0)..."
 
           mkdir -p ios/Flutter
           FLUTTER_BIN=$(which flutter)
-          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
-          if [ ! -d "$ENGINE_DIR" ]; then
-            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
+          ENGINE_BASE=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_BASE" ]; then
+            ENGINE_BASE="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
           fi
 
-          XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
-          if [ ! -d "$XCFRAMEWORK" ]; then
-            flutter precache --ios --universal
+          echo "🔍 Searching engine base: $ENGINE_BASE"
+
+          FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-release/*/Flutter.framework" -print -quit)
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios/*/Flutter.framework" -print -quit)
+          fi
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-profile/*/Flutter.framework" -print -quit)
           fi
 
-          FRAMEWORK_PATH=$(find "$XCFRAMEWORK" -type d -path "*/Flutter.framework" | head -n 1)
-          if [ -d "$FRAMEWORK_PATH" ]; then
-            echo "✅ Found Flutter.framework slice at: $FRAMEWORK_PATH"
-            cp -R "$FRAMEWORK_PATH" ios/Flutter/
-          else
-            echo "❌ Could not locate Flutter.framework!"
-            find "$ENGINE_DIR" -maxdepth 5 -type d -name "Flutter.framework"
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            echo "❌ Could not locate Flutter.framework anywhere!"
+            find "$ENGINE_BASE" -maxdepth 6 -type d -name "Flutter.framework" || true
             exit 1
           fi
+
+          echo "✅ Found Flutter.framework at: $FRAMEWORK_PATH"
+          cp -R "$FRAMEWORK_PATH" ios/Flutter/
+          echo "✅ Copied Flutter.framework → ios/Flutter/"
+          echo "📁 Headers check:"
+          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers missing!"
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
