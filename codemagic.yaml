@@ -44,13 +44,10 @@ workflows:
 
           echo "🔍 Searching engine base: $ENGINE_BASE"
 
-          # Ưu tiên ios-release
           FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-release/*/Flutter.framework" -print -quit)
-          # Nếu không có, fallback sang ios
           if [ -z "$FRAMEWORK_PATH" ]; then
             FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios/*/Flutter.framework" -print -quit)
           fi
-          # Nếu vẫn không có, fallback sang ios-profile
           if [ -z "$FRAMEWORK_PATH" ]; then
             FRAMEWORK_PATH=$(find "$ENGINE_BASE" -type d -path "*/ios-profile/*/Flutter.framework" -print -quit)
           fi
@@ -66,6 +63,22 @@ workflows:
           echo "✅ Copied Flutter.framework → ios/Flutter/"
           echo "📁 Headers check:"
           ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers missing!"
+
+      - name: 🧩 Regenerate missing xcfilelists
+        script: |
+          set -e
+          echo "🧩 Checking and regenerating missing xcfilelist files..."
+          cd ios
+          PODS_TARGET_DIR="Pods/Target Support Files/Pods-Runner"
+          mkdir -p "$PODS_TARGET_DIR"
+
+          echo "Pods/../Flutter/Flutter.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
+          echo "Pods/../Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
+
+          echo "✅ xcfilelist regenerated successfully."
+          cd ..
 
       - name: 🚀 Build iOS Archive (App Store)
         script: |
@@ -165,6 +178,22 @@ workflows:
           echo "✅ Copied Flutter.framework → ios/Flutter/"
           echo "📁 Headers check:"
           ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Headers missing!"
+
+      - name: 🧩 Regenerate missing xcfilelists
+        script: |
+          set -e
+          echo "🧩 Checking and regenerating missing xcfilelist files..."
+          cd ios
+          PODS_TARGET_DIR="Pods/Target Support Files/Pods-Runner"
+          mkdir -p "$PODS_TARGET_DIR"
+
+          echo "Pods/../Flutter/Flutter.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Pods_Runner.framework" > "$PODS_TARGET_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
+          echo "Pods/../Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
+          echo "Pods/../build/Release-iphoneos/Resources/*" > "$PODS_TARGET_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
+
+          echo "✅ xcfilelist regenerated successfully."
+          cd ..
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
