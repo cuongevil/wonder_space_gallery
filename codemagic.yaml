@@ -33,19 +33,34 @@ workflows:
         script: |
           set -e
           echo "🔍 Checking Flutter.xcframework..."
-          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          FLUTTER_BIN=$(which flutter)
+          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_DIR" ]; then
+            echo "⚙️ Using Codemagic engine path..."
+            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
+          fi
           if [ ! -d "$ENGINE_DIR/Flutter.xcframework" ]; then
-            echo "⚙️ Missing Flutter.xcframework — running full precache..."
+            echo "⚙️ Flutter.xcframework not found — running full precache..."
             flutter precache --ios --universal
           fi
           echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
 
-      - name: 🔨 Link Flutter headers automatically (v9.1)
+      - name: 🔨 Link Flutter headers (v9.2 universal)
         script: |
+          #!/usr/bin/env bash
           set -e
-          echo "🔗 Linking Flutter.xcframework headers (auto-detect slice)..."
+          echo "🔗 Linking Flutter.xcframework headers (universal path fix v9.2)..."
+
           mkdir -p ios/Flutter
-          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+
+          FLUTTER_BIN=$(which flutter)
+          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
+
+          if [ ! -d "$ENGINE_DIR" ]; then
+            echo "⚙️ Default path not found, switching to Codemagic path..."
+            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
+          fi
+
           XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
 
           if [ ! -d "$XCFRAMEWORK" ]; then
@@ -54,12 +69,13 @@ workflows:
           fi
 
           FRAMEWORK_PATH=$(find "$XCFRAMEWORK" -type d -path "*/Flutter.framework" | head -n 1)
+
           if [ -d "$FRAMEWORK_PATH" ]; then
             echo "✅ Found Flutter.framework slice at: $FRAMEWORK_PATH"
             cp -R "$FRAMEWORK_PATH" ios/Flutter/
           else
             echo "❌ Could not locate Flutter.framework in any xcframework slice!"
-            find "$XCFRAMEWORK" -maxdepth 3 -type d
+            find "$ENGINE_DIR" -maxdepth 5 -type d -name "Flutter.framework"
             exit 1
           fi
 
@@ -134,21 +150,30 @@ workflows:
         script: |
           set -e
           echo "🔍 Checking Flutter.xcframework..."
-          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
+          FLUTTER_BIN=$(which flutter)
+          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_DIR" ]; then
+            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
+          fi
           if [ ! -d "$ENGINE_DIR/Flutter.xcframework" ]; then
-            echo "⚙️ Missing Flutter.xcframework — running full precache..."
             flutter precache --ios --universal
           fi
-          echo "✅ Flutter.xcframework ready."
+          echo "✅ Flutter.xcframework ready at: $ENGINE_DIR/Flutter.xcframework"
 
-      - name: 🔨 Link Flutter headers automatically (v9.1)
+      - name: 🔨 Link Flutter headers (v9.2 universal)
         script: |
+          #!/usr/bin/env bash
           set -e
-          echo "🔗 Linking Flutter.xcframework headers (auto-detect slice)..."
-          mkdir -p ios/Flutter
-          ENGINE_DIR=$(dirname $(which flutter))/../bin/cache/artifacts/engine
-          XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
+          echo "🔗 Linking Flutter.xcframework headers (universal path fix v9.2)..."
 
+          mkdir -p ios/Flutter
+          FLUTTER_BIN=$(which flutter)
+          ENGINE_DIR=$(dirname "$FLUTTER_BIN")/../bin/cache/artifacts/engine
+          if [ ! -d "$ENGINE_DIR" ]; then
+            ENGINE_DIR="/Users/builder/programs/flutter/bin/cache/artifacts/engine"
+          fi
+
+          XCFRAMEWORK="$ENGINE_DIR/Flutter.xcframework"
           if [ ! -d "$XCFRAMEWORK" ]; then
             flutter precache --ios --universal
           fi
@@ -159,7 +184,7 @@ workflows:
             cp -R "$FRAMEWORK_PATH" ios/Flutter/
           else
             echo "❌ Could not locate Flutter.framework!"
-            find "$XCFRAMEWORK" -maxdepth 3 -type d
+            find "$ENGINE_DIR" -maxdepth 5 -type d -name "Flutter.framework"
             exit 1
           fi
 
