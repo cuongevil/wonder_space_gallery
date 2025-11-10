@@ -29,35 +29,37 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧱 Detect and copy Flutter.framework (v10.5 stable)
+      - name: 🧱 Force correct Flutter.framework slice (v10.7 definitive)
         script: |
           set -e
-          echo "🧱 Detecting correct Flutter.framework slice for iOS device..."
+          echo "🧱 Forcing correct Flutter.framework slice (ios-release / ios-arm64)..."
 
           flutter precache --ios
           FLUTTER_BIN=$(which flutter)
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
-          echo "🔍 Flutter root detected at: $FLUTTER_ROOT"
-
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
           mkdir -p ios/Flutter
 
-          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios*/Flutter.xcframework/ios-arm64/Flutter.framework" 2>/dev/null | grep -v "simulator" | head -n 1)
-          if [ -z "$DEVICE_SLICE" ]; then
-            DEVICE_SLICE=$(find /Users/builder/programs/flutter/bin/cache/artifacts/engine -type d -path "*/ios*/Flutter.xcframework/ios-arm64/Flutter.framework" 2>/dev/null | grep -v "simulator" | head -n 1)
+          DEVICE_SLICE="$ENGINE_DIR/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework"
+          echo "🔍 Checking slice: $DEVICE_SLICE"
+
+          if [ ! -d "$DEVICE_SLICE" ]; then
+            echo "⚠️ Not found at ios-release, trying fallback..."
+            DEVICE_SLICE="/Users/builder/programs/flutter/bin/cache/artifacts/engine/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework"
           fi
 
-          if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Could not find Flutter.framework slice for ios-arm64!"
+          if [ ! -d "$DEVICE_SLICE" ]; then
+            echo "❌ Could not locate Flutter.framework ios-arm64 slice!"
+            echo "Available Flutter.framework paths:"
+            find "$ENGINE_DIR" -type d -name "Flutter.framework" 2>/dev/null | sed 's/^/   /'
             exit 1
           fi
 
-          echo "✅ Using Flutter.framework slice: $DEVICE_SLICE"
           rm -rf ios/Flutter/Flutter.framework
           cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Flutter.framework copied successfully."
+          echo "✅ Copied Flutter.framework from ios-release/ios-arm64 slice."
 
-      - name: 🧩 Regenerate missing Xcode config & xcfilelists (v10.6)
+      - name: 🧩 Regenerate missing Xcode config & xcfilelists (v10.7)
         script: |
           set -e
           echo "🧩 Regenerating missing Xcode configuration and filelists..."
@@ -80,6 +82,7 @@ workflows:
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
           set -e
+          echo "🚀 Building iOS archive (AdHoc)..."
           flutter build ios --release --no-codesign
           mkdir -p build/ios/archive
           xcodebuild archive \
@@ -106,7 +109,7 @@ workflows:
 
       - name: 📋 Show IPA Path
         script: |
-          echo "📂 IPA ready:"
+          echo "📂 IPA ready at:"
           find build/ios/ipa -name "*.ipa"
 
     artifacts:
