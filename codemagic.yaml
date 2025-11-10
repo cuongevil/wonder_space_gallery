@@ -34,10 +34,7 @@ workflows:
           set -e
           echo "🧱 Detecting correct Flutter.framework slice for iOS device..."
 
-          # Force precache first
           flutter precache --ios
-
-          # Locate Flutter SDK root dynamically
           FLUTTER_BIN=$(which flutter)
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
           echo "🔍 Flutter root detected at: $FLUTTER_ROOT"
@@ -45,25 +42,40 @@ workflows:
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
           mkdir -p ios/Flutter
 
-          echo "🔎 Searching for ios-arm64 slice..."
           DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios*/Flutter.xcframework/ios-arm64/Flutter.framework" 2>/dev/null | grep -v "simulator" | head -n 1)
-
           if [ -z "$DEVICE_SLICE" ]; then
-            echo "⚠️ Could not locate ios-arm64 slice in standard path — checking fallback..."
             DEVICE_SLICE=$(find /Users/builder/programs/flutter/bin/cache/artifacts/engine -type d -path "*/ios*/Flutter.xcframework/ios-arm64/Flutter.framework" 2>/dev/null | grep -v "simulator" | head -n 1)
           fi
 
           if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Still cannot find Flutter.framework for ios-arm64!"
-            echo "Available slices:"
-            find "$ENGINE_DIR" -type d -name "Flutter.framework" 2>/dev/null | sed 's/^/   /'
+            echo "❌ Could not find Flutter.framework slice for ios-arm64!"
             exit 1
           fi
 
           echo "✅ Using Flutter.framework slice: $DEVICE_SLICE"
           rm -rf ios/Flutter/Flutter.framework
           cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Flutter.framework copied successfully to ios/Flutter"
+          echo "✅ Flutter.framework copied successfully."
+
+      - name: 🧩 Regenerate missing Xcode config & xcfilelists (v10.6)
+        script: |
+          set -e
+          echo "🧩 Regenerating missing Xcode configuration and filelists..."
+          mkdir -p ios/Flutter
+          cat > ios/Flutter/Release.xcconfig <<EOF
+          #include "Generated.xcconfig"
+          FLUTTER_BUILD_MODE=release
+          EOF
+          echo "✅ Recreated ios/Flutter/Release.xcconfig"
+
+          PODS_DIR="ios/Pods/Target Support Files/Pods-Runner"
+          mkdir -p "$PODS_DIR"
+
+          echo "Pods/../Flutter/Flutter.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-input-files.xcfilelist"
+          echo "build/ios/Release-iphoneos/Pods_Runner.framework" > "$PODS_DIR/Pods-Runner-frameworks-Release-output-files.xcfilelist"
+          echo "Pods/../Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-input-files.xcfilelist"
+          echo "build/ios/Release-iphoneos/Resources/*" > "$PODS_DIR/Pods-Runner-resources-Release-output-files.xcfilelist"
+          echo "✅ Recreated missing Pods xcfilelist files"
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
