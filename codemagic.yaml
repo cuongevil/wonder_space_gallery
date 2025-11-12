@@ -39,57 +39,25 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧱 Fix Flutter.framework (v11.9 fixed indent)
+      - name: 🧱 Fix Flutter.framework (engine slice ensure)
         script: |
           set -e
           echo "🧱 Preparing Flutter.framework for iOS device..."
 
-          # 1️⃣ Resolve flutter binary real path
           FLUTTER_BIN_SYM=$(which flutter)
           if command -v realpath >/dev/null 2>&1; then
             FLUTTER_BIN=$(realpath "$FLUTTER_BIN_SYM")
           else
             FLUTTER_BIN=$(python3 -c "import os, subprocess; p=subprocess.check_output(['which','flutter']).decode().strip(); print(os.path.realpath(p))")
           fi
-          echo "🔎 Flutter bin: $FLUTTER_BIN"
 
-          # 2️⃣ Detect Flutter root and engine
-          CANDIDATES=(
-            "$(dirname "$(dirname "$FLUTTER_BIN")")"
-            "/Users/builder/programs/flutter"
-            "$HOME/programs/flutter"
-            "/opt/homebrew/Caskroom/flutter/latest/flutter"
-            "/usr/local/Caskroom/flutter/latest/flutter"
-            "/Applications/flutter"
-          )
+          FLUTTER_ROOT=$(dirname "$(dirname "$FLUTTER_BIN")")
+          ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
+          echo "🔍 Flutter root: $FLUTTER_ROOT"
+          echo "🔍 Engine dir: $ENGINE_DIR"
 
-          ENGINE_DIR=""
-          for ROOT in "${CANDIDATES[@]}"; do
-            if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
-              ENGINE_DIR="$ROOT/bin/cache/artifacts/engine"
-              break
-            fi
-          done
+          flutter precache --ios
 
-          if [ -z "$ENGINE_DIR" ]; then
-            echo "⚠️ Engine dir not found, running flutter precache..."
-            flutter precache --ios || true
-            for ROOT in "${CANDIDATES[@]}"; do
-              if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
-                ENGINE_DIR="$ROOT/bin/cache/artifacts/engine"
-                break
-              fi
-            done
-          fi
-
-          if [ -z "$ENGINE_DIR" ]; then
-            echo "❌ Could not determine Flutter engine dir. Candidates tried:"
-            printf ' - %s\n' "${CANDIDATES[@]}"
-            exit 1
-          fi
-          echo "✅ Flutter engine dir: $ENGINE_DIR"
-
-          # 3️⃣ Pick correct Flutter.framework slice (ios-release arm64)
           DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
             \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
             -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
@@ -104,8 +72,7 @@ workflows:
           fi
 
           if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Flutter.framework (ios-arm64) not found under $ENGINE_DIR"
-            echo "📃 Available Flutter.framework paths:"
+            echo "❌ Flutter.framework slice (ios-arm64) not found under $ENGINE_DIR"
             find "$ENGINE_DIR" -name "Flutter.framework" || true
             exit 1
           fi
@@ -113,18 +80,14 @@ workflows:
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
           cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Copied Flutter.framework from:"
-          echo "$DEVICE_SLICE"
-
-          echo "📂 Headers check:"
-          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!"; exit 1)
-          echo "🎉 Flutter.framework ready."
+          echo "✅ Copied Flutter.framework from: $DEVICE_SLICE"
+          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!" && exit 1)
 
       - name: 🧼 Clean iOS Cache
         script: |
           set -e
           echo "🧼 Cleaning Pods and iOS caches..."
-          rm -rf ios/Pods ios/Podfile.lock ios/Flutter/Flutter.framework
+          rm -rf ios/Pods ios/Podfile.lock
           flutter clean
           flutter pub get
           cd ios && pod install && cd ..
@@ -134,19 +97,38 @@ workflows:
           set -e
           echo "🚀 Building Flutter iOS..."
 
+          # 🔍 Locate Flutter SDK and ensure engine cached
+          FLUTTER_SDK=$(dirname "$(dirname "$(which flutter)")")
+          echo "📍 Flutter SDK path: $FLUTTER_SDK"
+          flutter precache --ios
+
           # 🔧 Ensure Flutter.framework exists before build
-          if [ ! -d "ios/Flutter/Flutter.framework" ]; then
-            echo "⚠️ Flutter.framework missing — copying again..."
-            flutter precache --ios
-            mkdir -p ios/Flutter
-            FRAME_PATH=$(find "$(flutter --version | grep -o '/.*/flutter')" -name "Flutter.framework" | head -n 1)
-            if [ -n "$FRAME_PATH" ]; then
-              cp -R "$FRAME_PATH" ios/Flutter/
-            fi
+          ENGINE_DIR="$FLUTTER_SDK/bin/cache/artifacts/engine"
+          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
+            \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
+            -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
+            | head -n 1 || true)
+
+          if [ -z "$DEVICE_SLICE" ]; then
+            echo "⚠️ Flutter.framework slice not found, trying ios-profile..."
+            DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
+              \( -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" \
+              -o -path "*/ios-profile/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
+              | head -n 1 || true)
           fi
 
+          if [ -z "$DEVICE_SLICE" ]; then
+            echo "❌ Flutter.framework (ios-arm64) not found under $ENGINE_DIR"
+            exit 1
+          fi
+
+          mkdir -p ios/Flutter
+          rm -rf ios/Flutter/Flutter.framework
+          cp -R "$DEVICE_SLICE" ios/Flutter/
+          echo "✅ Copied Flutter.framework from: $DEVICE_SLICE"
+
           echo "📂 Checking Flutter.framework headers:"
-          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Still missing headers!"; exit 1)
+          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Still missing headers!" && exit 1)
 
           flutter build ios --release --no-codesign
 
