@@ -105,17 +105,18 @@ workflows:
             echo "✅ Flutter.framework path already set."
           fi
 
-      - name: 🧱 Patch Podfile for Flutter.framework
+      - name: 🧱 Patch Podfile (auto add Flutter.framework search path for all Pods)
         script: |
           set -e
-          echo "🧱 Patching Podfile to ensure all pods see Flutter.framework..."
-          if ! grep -q "post_install do" ios/Podfile; then
+          echo "🧱 Checking Podfile for Flutter.framework patch..."
+          if ! grep -q "Flutter.framework" ios/Podfile; then
+            echo "🩹 Injecting Flutter.framework patch into Podfile..."
             cat <<'RUBY' >> ios/Podfile
 
-# --- Codemagic auto patch: ensure all pods can find Flutter.framework ---
+# --- Codemagic auto patch: ensure all Pods can find Flutter.framework ---
   post_install do |installer|
-  installer.pods_project.targets.each do |target|
   flutter_framework_path = File.join(File.dirname(__FILE__), 'Flutter')
+  installer.pods_project.targets.each do |target|
   target.build_configurations.each do |config|
   config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
   unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?(flutter_framework_path)
@@ -127,7 +128,7 @@ workflows:
   # --- End patch ---
   RUBY
   else
-  echo "✅ Podfile already patched."
+  echo "✅ Podfile already contains Flutter.framework patch."
   fi
 
 - name: 🧼 Reinstall Pods cleanly
