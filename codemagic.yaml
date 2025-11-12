@@ -39,20 +39,32 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧱 Fix Flutter.framework (v11.5 definitive)
+      - name: 🧱 Fix Flutter.framework (v11.6 definitive auto-path)
         script: |
           set -e
           echo "🧱 Preparing Flutter.framework for iOS device..."
+
+          # ✅ Detect Flutter root correctly in Codemagic
           FLUTTER_BIN=$(which flutter)
-          FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
+          FLUTTER_ROOT=$(dirname $(dirname "$FLUTTER_BIN"))
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
 
-          echo "🔍 Searching Flutter.framework slice (ios-release / arm64)..."
+          echo "🔍 Flutter engine dir: $ENGINE_DIR"
+
+          # Auto precache if missing
+          if [ ! -d "$ENGINE_DIR" ]; then
+            echo "⚠️ Engine artifacts missing — running flutter precache..."
+            flutter precache --ios
+          fi
+
+          # Search correct framework slice
           DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
+
           if [ -z "$DEVICE_SLICE" ]; then
             echo "⚠️ Using ios-profile fallback..."
             DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
           fi
+
           if [ -z "$DEVICE_SLICE" ]; then
             echo "❌ Flutter.framework not found!"
             find "$ENGINE_DIR" -name "Flutter.framework"
@@ -65,9 +77,14 @@ workflows:
           echo "✅ Copied Flutter.framework from:"
           echo "$DEVICE_SLICE"
 
+          echo "📂 Verifying headers..."
+          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Missing headers!"
+          echo "✅ Flutter.framework ready for build."
+
       - name: 🧱 Build Flutter iOS (Release No-Codesign)
         script: |
           set -e
+          echo "🚀 Building Flutter iOS..."
           flutter build ios --release --no-codesign
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
@@ -94,7 +111,7 @@ workflows:
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
-          echo "✅ IPA exported:"
+          echo "✅ IPA exported successfully!"
           find build/ios/ipa -name "*.ipa"
 
     artifacts:
