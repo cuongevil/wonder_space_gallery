@@ -51,14 +51,14 @@ workflows:
           else
             FLUTTER_BIN=$(python3 - <<'PY'
   import os, subprocess
-  p=subprocess.check_output(['which','flutter']).decode().strip()
+  p = subprocess.check_output(['which','flutter']).decode().strip()
   print(os.path.realpath(p))
   PY
   )
   fi
 echo "🔎 flutter bin: $FLUTTER_BIN"
-  
-  # 2️⃣ Detect Flutter root
+
+# 2️⃣ Detect Flutter root
   C1="$(dirname "$(dirname "$FLUTTER_BIN")")"
   C2="/Users/builder/programs/flutter"
   C3="$HOME/programs/flutter"
@@ -92,12 +92,23 @@ echo "🔎 flutter bin: $FLUTTER_BIN"
   exit 1
   fi
 echo "✅ Flutter engine dir: $ENGINE_DIR"
+
+# 3️⃣ Pick correct Flutter.framework slice (ios-release arm64)
+  DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
+  \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
+  -o -path "*/ios-release/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" \
+  -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \
+  -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" \) \
+  | head -n 1 || true)
   
-  # 3️⃣ Pick correct Flutter.framework slice (ios-release arm64)
-  DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1 || true)
   if [ -z "$DEVICE_SLICE" ]; then
   echo "⚠️ ios-release slice not found, trying ios-profile..."
-  DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1 || true)
+  DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
+  \( -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" \
+  -o -path "*/ios-profile/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" \
+  -o -path "*/ios-profile/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \
+  -o -path "*/ios-profile/extension_safe/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" \) \
+  | head -n 1 || true)
   fi
   
   if [ -z "$DEVICE_SLICE" ]; then
@@ -117,38 +128,38 @@ echo "✅ Flutter engine dir: $ENGINE_DIR"
   ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!"; exit 1)
   echo "🎉 Flutter.framework ready."
 
-  - name: 🧱 Build Flutter iOS (Release No-Codesign)
-    script: |
-      set -e
-      echo "🚀 Building Flutter iOS..."
-      flutter build ios --release --no-codesign
+- name: 🧱 Build Flutter iOS (Release No-Codesign)
+  script: |
+    set -e
+    echo "🚀 Building Flutter iOS..."
+    flutter build ios --release --no-codesign
 
-  - name: 🚀 Build iOS Archive (Ad Hoc)
-    script: |
-      set -e
-      mkdir -p build/ios/archive
-      xcodebuild archive \
-        -workspace ios/Runner.xcworkspace \
-        -scheme Runner \
-        -configuration Release \
-        -archivePath build/ios/archive/Runner.xcarchive \
-        -destination 'generic/platform=iOS' \
-        CODE_SIGN_STYLE=Manual \
-        DEVELOPMENT_TEAM="${TEAM_ID}" \
-        CODE_SIGN_IDENTITY="${CERT_NAME}" \
-        PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-        CODE_SIGNING_ALLOWED=YES \
-        CODE_SIGNING_REQUIRED=YES
+- name: 🚀 Build iOS Archive (Ad Hoc)
+  script: |
+    set -e
+    mkdir -p build/ios/archive
+    xcodebuild archive \
+      -workspace ios/Runner.xcworkspace \
+      -scheme Runner \
+      -configuration Release \
+      -archivePath build/ios/archive/Runner.xcarchive \
+      -destination 'generic/platform=iOS' \
+      CODE_SIGN_STYLE=Manual \
+      DEVELOPMENT_TEAM="${TEAM_ID}" \
+      CODE_SIGN_IDENTITY="${CERT_NAME}" \
+      PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+      CODE_SIGNING_ALLOWED=YES \
+      CODE_SIGNING_REQUIRED=YES
 
-  - name: 📦 Export Signed IPA
-    script: |
-      set -e
-      xcodebuild -exportArchive \
-        -archivePath build/ios/archive/Runner.xcarchive \
-        -exportOptionsPlist ios/exportOptions_adhoc.plist \
-        -exportPath build/ios/ipa
-      echo "✅ IPA exported successfully!"
-      find build/ios/ipa -name "*.ipa"
+- name: 📦 Export Signed IPA
+  script: |
+    set -e
+    xcodebuild -exportArchive \
+      -archivePath build/ios/archive/Runner.xcarchive \
+      -exportOptionsPlist ios/exportOptions_adhoc.plist \
+      -exportPath build/ios/ipa
+    echo "✅ IPA exported successfully!"
+    find build/ios/ipa -name "*.ipa"
 
 artifacts:
   - build/ios/ipa/*.ipa
