@@ -1,8 +1,8 @@
 # ===========================================
-# Wonder Space Gallery - Podfile v11.6 FINAL
+# Wonder Space Gallery - Podfile v11.6.1 FINAL
 # ✅ Disable provisioning for all Pods
 # ✅ Manual signing for Runner only
-# ✅ Fix 'Flutter/Flutter.h' not found for all Pods
+# ✅ Fix 'Flutter/Flutter.h' + 'No such module Flutter'
 # ✅ iOS Deployment Target >= 15.0
 # ===========================================
 
@@ -35,7 +35,7 @@ target 'Runner' do
 end
 
 # ===========================================
-# POST INSTALL CLEANUP
+# POST INSTALL CLEANUP & SEARCH PATH FIX
 # ===========================================
 post_install do |installer|
   puts "🚧 Cleaning signing for Pods & setting manual for Runner..."
@@ -51,14 +51,21 @@ post_install do |installer|
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
       config.build_settings['DEVELOPMENT_TEAM'] = ''
+
+      # 📱 Minimum iOS target = 15.0
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
 
-      # 🧩 Add Flutter.framework search path for all Pods (fix 'Flutter/Flutter.h' issue)
+      # 🧩 Add Flutter.framework search path for all Pods
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
       unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?(flutter_framework_path)
         config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_path
+      end
+
+      # 🧩 Add explicit $(PROJECT_DIR)/Flutter for Swift module visibility
+      unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?('$(PROJECT_DIR)/Flutter')
+        config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '$(PROJECT_DIR)/Flutter'
       end
     end
   end
@@ -78,5 +85,5 @@ post_install do |installer|
     end
   end
 
-  puts "✅ post_install completed — Pods auto, Runner manual, all pods see Flutter.framework."
+  puts "✅ post_install completed — Pods auto, Runner manual, all pods see Flutter.framework & module Flutter."
 end

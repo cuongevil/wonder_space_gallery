@@ -19,79 +19,28 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧹 Clean & Prepare
+      - name: 🧼 Clean DerivedData & Flutter Cache
         script: |
           set -e
+          echo "🧼 Cleaning DerivedData and Flutter cache..."
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          rm -rf ios/Flutter/Flutter.framework
           flutter clean
           flutter pub get
-          flutter precache --ios
-          mkdir -p ios/Flutter
-          for cfg in Release Debug Profile; do
-            touch ios/Flutter/$cfg.xcconfig
-          done
+          flutter precache --ios --force
 
       - name: 📦 Install CocoaPods
         script: |
           set -e
+          echo "📦 Reinstalling CocoaPods..."
           cd ios
           rm -rf Pods Podfile.lock
+          pod deintegrate
+          pod cache clean --all
           pod repo update
           pod install
           cd ..
-
-      - name: 🧱 Fix Flutter.framework (engine slice ensure)
-        script: |
-          set -e
-          echo "🧱 Preparing Flutter.framework for iOS device..."
-
-          CANDIDATES=(
-            "/Users/builder/programs/flutter"
-            "$HOME/programs/flutter"
-            "/opt/homebrew/Caskroom/flutter/latest/flutter"
-            "/usr/local/Caskroom/flutter/latest/flutter"
-          )
-
-          FLUTTER_SDK=""
-          for ROOT in "${CANDIDATES[@]}"; do
-            if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
-              FLUTTER_SDK="$ROOT"
-              break
-            fi
-          done
-
-          if [ -z "$FLUTTER_SDK" ]; then
-            echo "❌ Could not locate Flutter SDK."
-            exit 1
-          fi
-
-          echo "📍 Flutter SDK path: $FLUTTER_SDK"
-          flutter precache --ios
-
-          ENGINE_DIR="$FLUTTER_SDK/bin/cache/artifacts/engine"
-          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
-            \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
-            -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
-            | head -n 1 || true)
-
-          if [ -z "$DEVICE_SLICE" ]; then
-            echo "⚠️ ios-release slice not found, trying ios-profile..."
-            DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
-              \( -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" \
-              -o -path "*/ios-profile/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
-              | head -n 1 || true)
-          fi
-
-          if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Flutter.framework slice not found under $ENGINE_DIR"
-            find "$ENGINE_DIR" -name "Flutter.framework" || true
-            exit 1
-          fi
-
-          mkdir -p ios/Flutter
-          rm -rf ios/Flutter/Flutter.framework
-          cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Copied Flutter.framework from: $DEVICE_SLICE"
-          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!" && exit 1)
+          echo "✅ Pods installed successfully."
 
       - name: 🧱 Force Rebuild Flutter.framework Slice
         script: |
@@ -123,16 +72,6 @@ workflows:
             echo "✅ Flutter.framework path already set."
           fi
 
-      - name: 🧼 Reinstall Pods cleanly
-        script: |
-          set -e
-          echo "🧼 Cleaning Pods and iOS caches..."
-          cd ios
-          rm -rf Pods Podfile.lock Flutter/Flutter.framework
-          pod cache clean --all
-          pod install
-          cd ..
-
       - name: 🧱 Build Flutter iOS (Release No-Codesign)
         script: |
           set -e
@@ -141,12 +80,15 @@ workflows:
           ls -la ios/Flutter || true
           ls -la ios/Flutter/Flutter.framework || true
           ls -la ios/Flutter/Flutter.framework/Headers || true
+
+          # Build without code signing
           flutter build ios --release --no-codesign
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
           set -e
           mkdir -p build/ios/archive
+          echo "🚀 Archiving iOS build..."
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -163,6 +105,7 @@ workflows:
       - name: 📦 Export Signed IPA
         script: |
           set -e
+          echo "📦 Exporting signed IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
