@@ -19,51 +19,53 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     cache:
-      cache_paths: []  # ⚡ Tắt cache để đảm bảo rebuild sạch
+      cache_paths: [] # ⚡ Disable cache để rebuild sạch
 
     scripts:
-      - name: 🧹 Clean Flutter environment
+      - name: 🧹 Clean Flutter environment & rebuild configs
         script: |
           set -e
-          echo "🧹 Cleaning Flutter + Pods..."
+          echo "🧹 Cleaning Flutter + rebuilding configs..."
           flutter clean
           flutter pub get
+          flutter precache --ios
+          flutter build ios --no-codesign || true  # Tạo Generated.xcconfig
           rm -rf ~/Library/Developer/Xcode/DerivedData
-          rm -rf ios/Flutter
-          cd ios && pod deintegrate || true
-          pod repo update && pod install
+          cd ios
+          pod deintegrate || true
+          pod repo update
+          pod install
           cd ..
-          echo "✅ Clean completed."
+          echo "✅ Flutter + Pods ready."
 
-      - name: 🧱 Force rebuild Flutter engine (ios-release)
+      - name: 🧱 Rebuild Flutter engine for ios-release
         script: |
           set -e
-          echo "🧱 Forcing Flutter engine to rebuild ios-release..."
+          echo "🧱 Forcing Flutter engine rebuild (ios-release)..."
           flutter precache --ios --force
           flutter build ios --release --no-codesign || true
-          echo "✅ Flutter ios-release engine rebuilt."
+          echo "✅ ios-release engine rebuilt."
 
-      - name: 🧩 Auto-detect Flutter.framework path (v11.0)
+      - name: 🧩 Auto-detect & copy Flutter.framework (v11.1)
         script: |
           set -e
           echo "🧩 Auto-detecting Flutter.framework (ios-release arm64)..."
 
-          # 1️⃣ Dò vị trí Flutter SDK
+          # 1️⃣ Detect Flutter SDK location
           FLUTTER_BIN=$(which flutter)
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
           if [ ! -d "$FLUTTER_ROOT/bin/cache/artifacts/engine" ]; then
-            # Fallback: Codemagic path
             FLUTTER_ROOT="/Users/builder/programs/flutter"
           fi
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
           echo "🔍 Flutter SDK root: $FLUTTER_ROOT"
 
-          # 2️⃣ Dọn các slice profile/simulator
-          echo "🧹 Removing all ios-profile & simulator slices..."
+          # 2️⃣ Remove simulator/profile slices
+          echo "🧹 Removing simulator/profile slices..."
           find "$ENGINE_DIR" -type d -path "*/ios-profile*" -exec rm -rf {} + || true
           find "$ENGINE_DIR" -type d -path "*/ios-simulator*" -exec rm -rf {} + || true
 
-          # 3️⃣ Tìm slice đúng (ios-release/ios-arm64)
+          # 3️⃣ Find ios-release arm64 slice
           DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
 
           if [ -z "$DEVICE_SLICE" ]; then
