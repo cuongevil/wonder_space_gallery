@@ -29,6 +29,20 @@ workflows:
           flutter pub get
           flutter precache --ios --force
 
+      - name: 🧱 Ensure Flutter xcconfig files exist
+        script: |
+          set -e
+          echo "🧱 Ensuring Flutter iOS xcconfig files..."
+          mkdir -p ios/Flutter
+          for cfg in Release Debug Profile; do
+            if [ ! -f "ios/Flutter/$cfg.xcconfig" ]; then
+              echo "// Auto-created by Codemagic to avoid missing base configuration" > ios/Flutter/$cfg.xcconfig
+              echo "Created ios/Flutter/$cfg.xcconfig"
+            else
+              echo "✅ ios/Flutter/$cfg.xcconfig already exists."
+            fi
+          done
+
       - name: 📦 Install CocoaPods
         script: |
           set -e
@@ -81,7 +95,6 @@ workflows:
           ls -la ios/Flutter/Flutter.framework || true
           ls -la ios/Flutter/Flutter.framework/Headers || true
 
-          # Build without code signing
           flutter build ios --release --no-codesign
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
