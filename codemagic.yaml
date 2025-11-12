@@ -44,20 +44,31 @@ workflows:
           set -e
           echo "🧱 Preparing Flutter.framework for iOS device..."
 
-          FLUTTER_BIN_SYM=$(which flutter)
-          if command -v realpath >/dev/null 2>&1; then
-            FLUTTER_BIN=$(realpath "$FLUTTER_BIN_SYM")
-          else
-            FLUTTER_BIN=$(python3 -c "import os, subprocess; p=subprocess.check_output(['which','flutter']).decode().strip(); print(os.path.realpath(p))")
+          # Locate Flutter SDK path
+          CANDIDATES=(
+            "/Users/builder/programs/flutter"
+            "$HOME/programs/flutter"
+            "/opt/homebrew/Caskroom/flutter/latest/flutter"
+            "/usr/local/Caskroom/flutter/latest/flutter"
+          )
+
+          FLUTTER_SDK=""
+          for ROOT in "${CANDIDATES[@]}"; do
+            if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
+              FLUTTER_SDK="$ROOT"
+              break
+            fi
+          done
+
+          if [ -z "$FLUTTER_SDK" ]; then
+            echo "❌ Could not locate Flutter SDK."
+            exit 1
           fi
 
-          FLUTTER_ROOT=$(dirname "$(dirname "$FLUTTER_BIN")")
-          ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
-          echo "🔍 Flutter root: $FLUTTER_ROOT"
-          echo "🔍 Engine dir: $ENGINE_DIR"
-
+          echo "📍 Flutter SDK path: $FLUTTER_SDK"
           flutter precache --ios
 
+          ENGINE_DIR="$FLUTTER_SDK/bin/cache/artifacts/engine"
           DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
             \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
             -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
@@ -72,7 +83,7 @@ workflows:
           fi
 
           if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Flutter.framework slice (ios-arm64) not found under $ENGINE_DIR"
+            echo "❌ Flutter.framework slice not found under $ENGINE_DIR"
             find "$ENGINE_DIR" -name "Flutter.framework" || true
             exit 1
           fi
@@ -97,12 +108,30 @@ workflows:
           set -e
           echo "🚀 Building Flutter iOS..."
 
-          # 🔍 Locate Flutter SDK and ensure engine cached
-          FLUTTER_SDK=$(dirname "$(dirname "$(which flutter)")")
+          # 🔍 Locate Flutter SDK manually (Codemagic standard paths)
+          CANDIDATES=(
+            "/Users/builder/programs/flutter"
+            "$HOME/programs/flutter"
+            "/opt/homebrew/Caskroom/flutter/latest/flutter"
+            "/usr/local/Caskroom/flutter/latest/flutter"
+          )
+
+          FLUTTER_SDK=""
+          for ROOT in "${CANDIDATES[@]}"; do
+            if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
+              FLUTTER_SDK="$ROOT"
+              break
+            fi
+          done
+
+          if [ -z "$FLUTTER_SDK" ]; then
+            echo "❌ Could not locate Flutter SDK."
+            exit 1
+          fi
+
           echo "📍 Flutter SDK path: $FLUTTER_SDK"
           flutter precache --ios
 
-          # 🔧 Ensure Flutter.framework exists before build
           ENGINE_DIR="$FLUTTER_SDK/bin/cache/artifacts/engine"
           DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
             \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
@@ -119,6 +148,7 @@ workflows:
 
           if [ -z "$DEVICE_SLICE" ]; then
             echo "❌ Flutter.framework (ios-arm64) not found under $ENGINE_DIR"
+            find "$ENGINE_DIR" -name "Flutter.framework" || true
             exit 1
           fi
 
