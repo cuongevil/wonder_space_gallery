@@ -39,80 +39,116 @@ workflows:
           pod install
           cd ..
 
-      - name: 🧱 Fix Flutter.framework (v11.6 definitive auto-path)
+      - name: 🧱 Fix Flutter.framework (v11.7 auto-resolve)
         script: |
           set -e
           echo "🧱 Preparing Flutter.framework for iOS device..."
 
-          # ✅ Detect Flutter root correctly in Codemagic
-          FLUTTER_BIN=$(which flutter)
-          FLUTTER_ROOT=$(dirname $(dirname "$FLUTTER_BIN"))
-          ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
+          # 1️⃣ Resolve real flutter binary (avoid /usr/local/bin symlink)
+          FLUTTER_BIN_SYM=$(which flutter)
+          if command -v realpath >/dev/null 2>&1; then
+            FLUTTER_BIN=$(realpath "$FLUTTER_BIN_SYM")
+          else
+            FLUTTER_BIN=$(python3 - <<'PY'
+  import os, subprocess
+  p=subprocess.check_output(['which','flutter']).decode().strip()
+  print(os.path.realpath(p))
+  PY
+  )
+  fi
+echo "🔎 flutter bin: $FLUTTER_BIN"
 
-          echo "🔍 Flutter engine dir: $ENGINE_DIR"
+# 2️⃣ Detect Flutter root
+  C1="$(dirname "$(dirname "$FLUTTER_BIN")")"
+  C2="/Users/builder/programs/flutter"
+  C3="$HOME/programs/flutter"
+  C4="/opt/homebrew/Caskroom/flutter/latest/flutter"
+  C5="/usr/local/Caskroom/flutter/latest/flutter"
+  C6="/Applications/flutter"
+  CANDIDATES=("$C1" "$C2" "$C3" "$C4" "$C5" "$C6")
+  
+  ENGINE_DIR=""
+  for ROOT in "${CANDIDATES[@]}"; do
+  if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
+  ENGINE_DIR="$ROOT/bin/cache/artifacts/engine"
+  break
+  fi
+  done
+  
+  if [ -z "$ENGINE_DIR" ]; then
+  echo "⚠️ Engine dir not found in candidates, running flutter precache..."
+  flutter precache --ios || true
+  for ROOT in "${CANDIDATES[@]}"; do
+  if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
+  ENGINE_DIR="$ROOT/bin/cache/artifacts/engine"
+  break
+  fi
+  done
+  fi
+  
+  if [ -z "$ENGINE_DIR" ]; then
+  echo "❌ Could not determine Flutter engine dir. Candidates tried:"
+  printf ' - %s\n' "${CANDIDATES[@]}"
+  exit 1
+  fi
+echo "✅ Flutter engine dir: $ENGINE_DIR"
 
-          # Auto precache if missing
-          if [ ! -d "$ENGINE_DIR" ]; then
-            echo "⚠️ Engine artifacts missing — running flutter precache..."
-            flutter precache --ios
-          fi
+# 3️⃣ Pick correct Flutter.framework slice (ios-release arm64)
+  DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1 || true)
+  if [ -z "$DEVICE_SLICE" ]; then
+  echo "⚠️ ios-release slice not found, trying ios-profile..."
+  DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1 || true)
+  fi
+  
+  if [ -z "$DEVICE_SLICE" ]; then
+  echo "❌ Flutter.framework (ios-arm64) not found under $ENGINE_DIR"
+  echo "📃 Available Flutter.framework paths:"
+  find "$ENGINE_DIR" -name "Flutter.framework" || true
+  exit 1
+  fi
+  
+  mkdir -p ios/Flutter
+  rm -rf ios/Flutter/Flutter.framework
+  cp -R "$DEVICE_SLICE" ios/Flutter/
+  echo "✅ Copied Flutter.framework from:"
+  echo "$DEVICE_SLICE"
+  
+  echo "📂 Headers check:"
+  ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!"; exit 1)
+  echo "🎉 Flutter.framework ready."
 
-          # Search correct framework slice
-          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
+- name: 🧱 Build Flutter iOS (Release No-Codesign)
+  script: |
+    set -e
+    echo "🚀 Building Flutter iOS..."
+    flutter build ios --release --no-codesign
 
-          if [ -z "$DEVICE_SLICE" ]; then
-            echo "⚠️ Using ios-profile fallback..."
-            DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
-          fi
+- name: 🚀 Build iOS Archive (Ad Hoc)
+  script: |
+    set -e
+    mkdir -p build/ios/archive
+    xcodebuild archive \
+      -workspace ios/Runner.xcworkspace \
+      -scheme Runner \
+      -configuration Release \
+      -archivePath build/ios/archive/Runner.xcarchive \
+      -destination 'generic/platform=iOS' \
+      CODE_SIGN_STYLE=Manual \
+      DEVELOPMENT_TEAM="${TEAM_ID}" \
+      CODE_SIGN_IDENTITY="${CERT_NAME}" \
+      PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+      CODE_SIGNING_ALLOWED=YES \
+      CODE_SIGNING_REQUIRED=YES
 
-          if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Flutter.framework not found!"
-            find "$ENGINE_DIR" -name "Flutter.framework"
-            exit 1
-          fi
+- name: 📦 Export Signed IPA
+  script: |
+    set -e
+    xcodebuild -exportArchive \
+      -archivePath build/ios/archive/Runner.xcarchive \
+      -exportOptionsPlist ios/exportOptions_adhoc.plist \
+      -exportPath build/ios/ipa
+    echo "✅ IPA exported successfully!"
+    find build/ios/ipa -name "*.ipa"
 
-          mkdir -p ios/Flutter
-          rm -rf ios/Flutter/Flutter.framework
-          cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Copied Flutter.framework from:"
-          echo "$DEVICE_SLICE"
-
-          echo "📂 Verifying headers..."
-          ls ios/Flutter/Flutter.framework/Headers || echo "⚠️ Missing headers!"
-          echo "✅ Flutter.framework ready for build."
-
-      - name: 🧱 Build Flutter iOS (Release No-Codesign)
-        script: |
-          set -e
-          echo "🚀 Building Flutter iOS..."
-          flutter build ios --release --no-codesign
-
-      - name: 🚀 Build iOS Archive (Ad Hoc)
-        script: |
-          set -e
-          mkdir -p build/ios/archive
-          xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
-            CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES
-
-      - name: 📦 Export Signed IPA
-        script: |
-          set -e
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions_adhoc.plist \
-            -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully!"
-          find build/ios/ipa -name "*.ipa"
-
-    artifacts:
-      - build/ios/ipa/*.ipa
+artifacts:
+  - build/ios/ipa/*.ipa
