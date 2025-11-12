@@ -44,7 +44,6 @@ workflows:
           set -e
           echo "🧱 Preparing Flutter.framework for iOS device..."
 
-          # Locate Flutter SDK path
           CANDIDATES=(
             "/Users/builder/programs/flutter"
             "$HOME/programs/flutter"
@@ -94,21 +93,33 @@ workflows:
           echo "✅ Copied Flutter.framework from: $DEVICE_SLICE"
           ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!" && exit 1)
 
-      - name: 🧼 Clean iOS Cache
+      - name: 🧩 Ensure Flutter.framework Search Path
+        script: |
+          set -e
+          echo "🧩 Ensuring Xcode project knows where Flutter.framework is..."
+          PLIST="ios/Runner.xcodeproj/project.pbxproj"
+          if ! grep -q '$(PROJECT_DIR)/Flutter' "$PLIST"; then
+            echo "⚙️ Adding Flutter.framework path to FRAMEWORK_SEARCH_PATHS..."
+            sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n\t\t\t"$(PROJECT_DIR)\/Flutter",/' "$PLIST"
+          else
+            echo "✅ Flutter.framework path already set."
+          fi
+
+      - name: 🧼 Force rebuild Flutter pods
         script: |
           set -e
           echo "🧼 Cleaning Pods and iOS caches..."
-          rm -rf ios/Pods ios/Podfile.lock
-          flutter clean
-          flutter pub get
-          cd ios && pod install && cd ..
+          cd ios
+          rm -rf Pods Podfile.lock Flutter/Flutter.framework
+          pod cache clean --all
+          pod install
+          cd ..
 
       - name: 🧱 Build Flutter iOS (Release No-Codesign)
         script: |
           set -e
           echo "🚀 Building Flutter iOS..."
 
-          # 🔍 Locate Flutter SDK manually (Codemagic standard paths)
           CANDIDATES=(
             "/Users/builder/programs/flutter"
             "$HOME/programs/flutter"
