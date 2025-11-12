@@ -1,7 +1,8 @@
 # ===========================================
-# Wonder Space Gallery - Podfile v11.5
+# Wonder Space Gallery - Podfile v11.5 FINAL
 # ✅ Disable provisioning for all Pods
-# ✅ Keep Manual Signing for Runner only
+# ✅ Manual signing for Runner only
+# ✅ iOS Deployment Target >= 15.0
 # ===========================================
 
 platform :ios, '15.0'
@@ -40,14 +41,12 @@ post_install do |installer|
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # 🔧 Force disable signing for Pods
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
       config.build_settings['CODE_SIGN_IDENTITY'] = ''
       config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
       config.build_settings['DEVELOPMENT_TEAM'] = ''
-      # ⚙️ Fix deployment target warnings
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end

@@ -18,74 +18,61 @@ workflows:
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
-    cache:
-      cache_paths: []
-
     scripts:
-      - name: 🧹 Clean & Prepare Flutter iOS Environment
+      - name: 🧹 Clean & Prepare
         script: |
           set -e
-          echo "🧹 Cleaning Flutter..."
           flutter clean
           flutter pub get
           flutter precache --ios
-
-          echo "🧩 Ensuring xcconfig exists..."
           mkdir -p ios/Flutter
           for cfg in Release Debug Profile; do
-            FILE="ios/Flutter/$cfg.xcconfig"
-            if [ ! -f "$FILE" ]; then
-              echo "// auto-generated $cfg.xcconfig" > "$FILE"
-            fi
+            touch ios/Flutter/$cfg.xcconfig
           done
-          echo "✅ Flutter configs ready."
 
-      - name: 📦 Install CocoaPods (safe mode)
+      - name: 📦 Install CocoaPods
         script: |
           set -e
           cd ios
-          echo "📦 Installing Pods..."
           rm -rf Pods Podfile.lock
           pod repo update
           pod install
           cd ..
-          echo "✅ Pods installed successfully."
 
-      - name: 🧱 Build Flutter iOS (Release No-Codesign)
+      - name: 🧱 Fix Flutter.framework (v11.5 definitive)
         script: |
           set -e
-          echo "🧱 Building Flutter iOS app (no codesign)..."
-          flutter build ios --release --no-codesign
-          echo "✅ Flutter build done."
-
-      - name: 🧩 Copy correct Flutter.framework slice (ios-release arm64)
-        script: |
-          set -e
-          echo "🧩 Locating Flutter.framework for device..."
+          echo "🧱 Preparing Flutter.framework for iOS device..."
           FLUTTER_BIN=$(which flutter)
           FLUTTER_ROOT=$(dirname "$FLUTTER_BIN")/..
-          if [ ! -d "$FLUTTER_ROOT/bin/cache/artifacts/engine" ]; then
-            FLUTTER_ROOT="/Users/builder/programs/flutter"
-          fi
-
           ENGINE_DIR="$FLUTTER_ROOT/bin/cache/artifacts/engine"
-          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
 
+          echo "🔍 Searching Flutter.framework slice (ios-release / arm64)..."
+          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
           if [ -z "$DEVICE_SLICE" ]; then
-            echo "❌ Could not find Flutter.framework ios-arm64!"
-            find "$ENGINE_DIR" -type d -name "Flutter.framework"
+            echo "⚠️ Using ios-profile fallback..."
+            DEVICE_SLICE=$(find "$ENGINE_DIR" -type d -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" | head -n 1)
+          fi
+          if [ -z "$DEVICE_SLICE" ]; then
+            echo "❌ Flutter.framework not found!"
+            find "$ENGINE_DIR" -name "Flutter.framework"
             exit 1
           fi
 
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
           cp -R "$DEVICE_SLICE" ios/Flutter/
-          echo "✅ Copied Flutter.framework (ios-release arm64)."
+          echo "✅ Copied Flutter.framework from:"
+          echo "$DEVICE_SLICE"
+
+      - name: 🧱 Build Flutter iOS (Release No-Codesign)
+        script: |
+          set -e
+          flutter build ios --release --no-codesign
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
           set -e
-          echo "🚀 Building iOS archive..."
           mkdir -p build/ios/archive
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
@@ -99,21 +86,15 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
-          echo "✅ Archive created."
 
       - name: 📦 Export Signed IPA
         script: |
           set -e
-          echo "📦 Exporting AdHoc IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully."
-
-      - name: 📋 IPA Output
-        script: |
-          echo "📂 IPA ready at:"
+          echo "✅ IPA exported:"
           find build/ios/ipa -name "*.ipa"
 
     artifacts:
