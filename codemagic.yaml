@@ -105,126 +105,100 @@ workflows:
             echo "✅ Flutter.framework path already set."
           fi
 
-      - name: 🧱 Patch Podfile (auto add Flutter.framework search path for all Pods)
+      - name: 🧼 Reinstall Pods cleanly
         script: |
           set -e
-          echo "🧱 Checking Podfile for Flutter.framework patch..."
-          if ! grep -q "Flutter.framework" ios/Podfile; then
-            echo "🩹 Injecting Flutter.framework patch into Podfile..."
-            cat <<'RUBY' >> ios/Podfile
+          echo "🧼 Cleaning Pods and iOS caches..."
+          cd ios
+          rm -rf Pods Podfile.lock Flutter/Flutter.framework
+          pod cache clean --all
+          pod install
+          cd ..
 
-# --- Codemagic auto patch: ensure all Pods can find Flutter.framework ---
-  post_install do |installer|
-  flutter_framework_path = File.join(File.dirname(__FILE__), 'Flutter')
-  installer.pods_project.targets.each do |target|
-  target.build_configurations.each do |config|
-  config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
-  unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?(flutter_framework_path)
-  config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_path
-  end
-  end
-  end
-  end
-  # --- End patch ---
-  RUBY
-  else
-  echo "✅ Podfile already contains Flutter.framework patch."
-  fi
+      - name: 🧱 Build Flutter iOS (Release No-Codesign)
+        script: |
+          set -e
+          echo "🚀 Building Flutter iOS..."
 
-- name: 🧼 Reinstall Pods cleanly
-  script: |
-    set -e
-    echo "🧼 Cleaning Pods and iOS caches..."
-    cd ios
-    rm -rf Pods Podfile.lock Flutter/Flutter.framework
-    pod cache clean --all
-    pod install
-    cd ..
+          CANDIDATES=(
+            "/Users/builder/programs/flutter"
+            "$HOME/programs/flutter"
+            "/opt/homebrew/Caskroom/flutter/latest/flutter"
+            "/usr/local/Caskroom/flutter/latest/flutter"
+          )
 
-- name: 🧱 Build Flutter iOS (Release No-Codesign)
-  script: |
-    set -e
-    echo "🚀 Building Flutter iOS..."
-    
-    CANDIDATES=(
-      "/Users/builder/programs/flutter"
-      "$HOME/programs/flutter"
-      "/opt/homebrew/Caskroom/flutter/latest/flutter"
-      "/usr/local/Caskroom/flutter/latest/flutter"
-    )
-    
-    FLUTTER_SDK=""
-    for ROOT in "${CANDIDATES[@]}"; do
-      if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
-        FLUTTER_SDK="$ROOT"
-        break
-      fi
-    done
-    
-    if [ -z "$FLUTTER_SDK" ]; then
-      echo "❌ Could not locate Flutter SDK."
-      exit 1
-    fi
-    
-    echo "📍 Flutter SDK path: $FLUTTER_SDK"
-    flutter precache --ios
-    
-    ENGINE_DIR="$FLUTTER_SDK/bin/cache/artifacts/engine"
-    DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
-      \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
-      -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
-      | head -n 1 || true)
-    
-    if [ -z "$DEVICE_SLICE" ]; then
-      echo "⚠️ Flutter.framework slice not found, trying ios-profile..."
-      DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
-        \( -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" \
-        -o -path "*/ios-profile/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
-        | head -n 1 || true)
-    fi
-    
-    if [ -z "$DEVICE_SLICE" ]; then
-      echo "❌ Flutter.framework (ios-arm64) not found under $ENGINE_DIR"
-      find "$ENGINE_DIR" -name "Flutter.framework" || true
-      exit 1
-    fi
-    
-    mkdir -p ios/Flutter
-    rm -rf ios/Flutter/Flutter.framework
-    cp -R "$DEVICE_SLICE" ios/Flutter/
-    echo "✅ Copied Flutter.framework from: $DEVICE_SLICE"
-    
-    echo "📂 Checking Flutter.framework headers:"
-    ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Still missing headers!" && exit 1)
-    
-    flutter build ios --release --no-codesign
+          FLUTTER_SDK=""
+          for ROOT in "${CANDIDATES[@]}"; do
+            if [ -d "$ROOT/bin/cache/artifacts/engine" ]; then
+              FLUTTER_SDK="$ROOT"
+              break
+            fi
+          done
 
-- name: 🚀 Build iOS Archive (Ad Hoc)
-  script: |
-    set -e
-    mkdir -p build/ios/archive
-    xcodebuild archive \
-      -workspace ios/Runner.xcworkspace \
-      -scheme Runner \
-      -configuration Release \
-      -archivePath build/ios/archive/Runner.xcarchive \
-      -destination 'generic/platform=iOS' \
-      CODE_SIGN_STYLE=Manual \
-      DEVELOPMENT_TEAM="${TEAM_ID}" \
-      CODE_SIGN_IDENTITY="${CERT_NAME}" \
-      PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-      CODE_SIGNING_ALLOWED=YES \
-      CODE_SIGNING_REQUIRED=YES
+          if [ -z "$FLUTTER_SDK" ]; then
+            echo "❌ Could not locate Flutter SDK."
+            exit 1
+          fi
 
-- name: 📦 Export Signed IPA
-  script: |
-    set -e
-    xcodebuild -exportArchive \
-      -archivePath build/ios/archive/Runner.xcarchive \
-      -exportOptionsPlist ios/exportOptions_adhoc.plist \
-      -exportPath build/ios/ipa
-    echo "✅ IPA exported successfully!"
-    find build/ios/ipa -name "*.ipa"
+          echo "📍 Flutter SDK path: $FLUTTER_SDK"
+          flutter precache --ios
 
-artifacts:
-  - build/ios/ipa/*.ipa
+          ENGINE_DIR="$FLUTTER_SDK/bin/cache/artifacts/engine"
+          DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
+            \( -path "*/ios-release/Flutter.xcframework/ios-arm64/Flutter.framework" \
+            -o -path "*/ios-release/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
+            | head -n 1 || true)
+
+          if [ -z "$DEVICE_SLICE" ]; then
+            echo "⚠️ Flutter.framework slice not found, trying ios-profile..."
+            DEVICE_SLICE=$(find "$ENGINE_DIR" -type d \
+              \( -path "*/ios-profile/Flutter.xcframework/ios-arm64/Flutter.framework" \
+              -o -path "*/ios-profile/extension_safe/Flutter.xcframework/ios-arm64/Flutter.framework" \) \
+              | head -n 1 || true)
+          fi
+
+          if [ -z "$DEVICE_SLICE" ]; then
+            echo "❌ Flutter.framework (ios-arm64) not found under $ENGINE_DIR"
+            find "$ENGINE_DIR" -name "Flutter.framework" || true
+            exit 1
+          fi
+
+          mkdir -p ios/Flutter
+          rm -rf ios/Flutter/Flutter.framework
+          cp -R "$DEVICE_SLICE" ios/Flutter/
+          echo "✅ Copied Flutter.framework from: $DEVICE_SLICE"
+
+          echo "📂 Checking Flutter.framework headers:"
+          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Still missing headers!" && exit 1)
+
+          flutter build ios --release --no-codesign
+
+      - name: 🚀 Build iOS Archive (Ad Hoc)
+        script: |
+          set -e
+          mkdir -p build/ios/archive
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_IDENTITY="${CERT_NAME}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES
+
+      - name: 📦 Export Signed IPA
+        script: |
+          set -e
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist ios/exportOptions_adhoc.plist \
+            -exportPath build/ios/ipa
+          echo "✅ IPA exported successfully!"
+          find build/ios/ipa -name "*.ipa"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
