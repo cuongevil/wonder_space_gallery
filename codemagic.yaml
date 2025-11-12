@@ -120,10 +120,34 @@ workflows:
           ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!"; exit 1)
           echo "🎉 Flutter.framework ready."
 
+      - name: 🧼 Clean iOS Cache
+        script: |
+          set -e
+          echo "🧼 Cleaning Pods and iOS caches..."
+          rm -rf ios/Pods ios/Podfile.lock ios/Flutter/Flutter.framework
+          flutter clean
+          flutter pub get
+          cd ios && pod install && cd ..
+
       - name: 🧱 Build Flutter iOS (Release No-Codesign)
         script: |
           set -e
           echo "🚀 Building Flutter iOS..."
+
+          # 🔧 Ensure Flutter.framework exists before build
+          if [ ! -d "ios/Flutter/Flutter.framework" ]; then
+            echo "⚠️ Flutter.framework missing — copying again..."
+            flutter precache --ios
+            mkdir -p ios/Flutter
+            FRAME_PATH=$(find "$(flutter --version | grep -o '/.*/flutter')" -name "Flutter.framework" | head -n 1)
+            if [ -n "$FRAME_PATH" ]; then
+              cp -R "$FRAME_PATH" ios/Flutter/
+            fi
+          fi
+
+          echo "📂 Checking Flutter.framework headers:"
+          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Still missing headers!"; exit 1)
+
           flutter build ios --release --no-codesign
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
