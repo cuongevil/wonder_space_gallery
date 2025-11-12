@@ -1,7 +1,8 @@
 # ===========================================
-# Wonder Space Gallery - Podfile v11.5 FINAL
+# Wonder Space Gallery - Podfile v11.6 FINAL
 # ✅ Disable provisioning for all Pods
 # ✅ Manual signing for Runner only
+# ✅ Fix 'Flutter/Flutter.h' not found for all Pods
 # ✅ iOS Deployment Target >= 15.0
 # ===========================================
 
@@ -39,8 +40,11 @@ end
 post_install do |installer|
   puts "🚧 Cleaning signing for Pods & setting manual for Runner..."
 
+  flutter_framework_path = File.join(File.dirname(__FILE__), 'Flutter')
+
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
+      # 🔧 Disable signing for all Pods
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
@@ -49,6 +53,12 @@ post_install do |installer|
       config.build_settings['DEVELOPMENT_TEAM'] = ''
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
+
+      # 🧩 Add Flutter.framework search path for all Pods (fix 'Flutter/Flutter.h' issue)
+      config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
+      unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?(flutter_framework_path)
+        config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_path
       end
     end
   end
@@ -68,5 +78,5 @@ post_install do |installer|
     end
   end
 
-  puts "✅ post_install completed — Pods auto, Runner manual."
+  puts "✅ post_install completed — Pods auto, Runner manual, all pods see Flutter.framework."
 end
