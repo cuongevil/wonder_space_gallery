@@ -92,19 +92,36 @@ workflows:
       - name: 🧱 Force Rebuild Flutter.framework Slice
         script: |
           set -e
-          echo "🧱 Force rebuilding Flutter.framework slice (ios-arm64)..."
+          echo "🧱 Force rebuilding Flutter.framework slice (auto detect arm64_armv7)..."
           flutter precache --ios --force
+          flutter --version
+          
           ENGINE_DIR=$(find "$HOME/programs/flutter/bin/cache/artifacts/engine" -type d -name ios-release -print -quit)
           if [ -z "$ENGINE_DIR" ]; then
             echo "❌ No ios-release engine found!"
             find "$HOME/programs/flutter/bin/cache/artifacts/engine" -maxdepth 3 -type d
             exit 1
           fi
-          echo "✅ Using engine from: $ENGINE_DIR"
+
+          echo "✅ Engine dir: $ENGINE_DIR"
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
-          cp -R "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/
-          echo "✅ Copied ios-release Flutter.framework manually."
+
+          SLICE_PATH=""
+          if [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
+            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework"
+          elif [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
+            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework"
+          fi
+
+          if [ -z "$SLICE_PATH" ]; then
+            echo "❌ Could not find Flutter.framework slice!"
+            find "$ENGINE_DIR" -name "Flutter.framework"
+            exit 1
+          fi
+
+          cp -R "$SLICE_PATH" ios/Flutter/
+          echo "✅ Copied Flutter.framework from: $SLICE_PATH"
           ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!" && exit 1)
 
       - name: 🧩 Ensure Flutter.framework Search Path
