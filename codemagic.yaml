@@ -139,13 +139,12 @@ workflows:
       - name: 🧱 Build Flutter iOS (Release No-Codesign)
         script: |
           set -e
-          echo "🚀 Building Flutter iOS..."
-          echo "📁 Checking Flutter.framework before build:"
-          ls -la ios/Flutter || true
-          ls -la ios/Flutter/Flutter.framework || true
-          ls -la ios/Flutter/Flutter.framework/Headers || true
-
-          flutter build ios --release --no-codesign
+          echo "🚀 Building Flutter iOS (verbose mode)..."
+          flutter build ios --release --no-codesign -v
+          if [ $? -ne 0 ]; then
+            echo "❌ Flutter build failed — dumping last 100 lines of build log..."
+            tail -n 100 ~/Library/Logs/flutter_*.log || true
+          fi
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
