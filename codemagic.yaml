@@ -45,21 +45,44 @@ workflows:
           cd ..
           echo "✅ Pods installed successfully."
 
-      - name: 🧾 Rebuild missing Pods filelists
+      - name: 🧱 Force rebuild Flutter.framework
         script: |
           set -e
-          echo "🧾 Regenerating Pods support files..."
-          cd ios
-          if [ -d "Pods" ]; then
-            rm -rf Pods/Target\ Support\ Files/Pods-Runner/*.xcfilelist || true
-            pod install
+          echo "🧱 Forcing rebuild of Flutter.framework..."
+          flutter precache --ios --force
+          
+          ENGINE_DIR=$(find "$HOME/programs/flutter/bin/cache/artifacts/engine" -type d -name ios-release -print -quit)
+          if [ -z "$ENGINE_DIR" ]; then
+            echo "❌ ios-release engine not found!"
+            exit 1
           fi
-          cd ..
+
+          echo "✅ Found engine at: $ENGINE_DIR"
+          mkdir -p ios/Flutter
+          rm -rf ios/Flutter/Flutter.framework
+
+          SLICE_PATH=""
+          if [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
+            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework"
+          elif [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
+            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework"
+          fi
+
+          if [ -z "$SLICE_PATH" ]; then
+            echo "❌ Could not find Flutter.framework slice!"
+            find "$ENGINE_DIR" -name "Flutter.framework"
+            exit 1
+          fi
+
+          cp -R "$SLICE_PATH" ios/Flutter/
+          echo "✅ Copied Flutter.framework to ios/Flutter/"
+          ls ios/Flutter/Flutter.framework/Headers || exit 1
 
       - name: 🚀 Build Flutter iOS (no codesign)
         script: |
           set -e
-          flutter build ios --release --no-codesign
+          echo "🚀 Building Flutter iOS (release, no codesign)..."
+          flutter build ios --release --no-codesign -v
 
       - name: 📦 Create exportOptions (Ad Hoc)
         script: |
