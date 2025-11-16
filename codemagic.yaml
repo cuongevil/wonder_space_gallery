@@ -19,46 +19,59 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: Install GNU timeout & basic tools
+      - name: 🧩 Install GNU timeout & basic tools
         script: |
-          set -e
           brew install coreutils || true
-          gtimeout --version || true
 
-      - name: Flutter clean & get
+      - name: 🧼 Clean Flutter & Prepare xcconfig
         script: |
           set -e
-          flutter --version
           flutter clean
           flutter pub get
+          mkdir -p ios/Flutter
+          for cfg in Release Debug Profile; do
+            if [ ! -f "ios/Flutter/$cfg.xcconfig" ]; then
+              echo "// Auto-created on Codemagic" > ios/Flutter/$cfg.xcconfig
+            fi
+          done
+          echo "✅ Ensured ios/Flutter/*.xcconfig exists."
 
-      - name: Install CocoaPods
+      - name: 📦 Install CocoaPods
         script: |
           set -e
           cd ios
           pod repo update
           pod install
           cd ..
+          echo "✅ Pods installed successfully."
 
-      - name: Build Flutter iOS (no codesign)
+      - name: 🧾 Rebuild missing Pods filelists
+        script: |
+          set -e
+          echo "🧾 Regenerating Pods support files..."
+          cd ios
+          if [ -d "Pods" ]; then
+            rm -rf Pods/Target\ Support\ Files/Pods-Runner/*.xcfilelist || true
+            pod install
+          fi
+          cd ..
+
+      - name: 🚀 Build Flutter iOS (no codesign)
         script: |
           set -e
           flutter build ios --release --no-codesign
 
-      - name: Create exportOptions (Ad Hoc)
+      - name: 📦 Create exportOptions (Ad Hoc)
         script: |
           set -e
           cat > ios/exportOptions_adhoc.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+           "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
             <string>ad-hoc</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>destination</key>
-            <string>export</string>
             <key>signingStyle</key>
             <string>manual</string>
             <key>provisioningProfiles</key>
@@ -68,13 +81,15 @@ workflows:
             </dict>
             <key>teamID</key>
             <string>CS2UV6F3ZY</string>
+            <key>compileBitcode</key>
+            <false/>
             <key>thinning</key>
             <string>&lt;none&gt;</string>
           </dict>
           </plist>
           EOF
 
-      - name: Archive (Manual signing)
+      - name: 🏗️ Archive iOS (manual signing)
         script: |
           set -e
           xcodebuild archive \
@@ -90,15 +105,15 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: Export signed IPA
+      - name: 📦 Export signed IPA
         script: |
           set -e
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
-          echo "IPA files:"
-          find build/ios/ipa -name "*.ipa" -maxdepth 1
+          echo "✅ IPA exported successfully!"
+          find build/ios/ipa -name "*.ipa"
 
     artifacts:
       - build/ios/ipa/*.ipa
