@@ -1,9 +1,5 @@
 # ===========================================
-# Wonder Space Gallery - Podfile v11.6.1 FINAL
-# ✅ Disable provisioning for all Pods
-# ✅ Manual signing for Runner only
-# ✅ Fix 'Flutter/Flutter.h' + 'No such module Flutter'
-# ✅ iOS Deployment Target >= 15.0
+# Wonder Space Gallery - Podfile FINAL (Anti-freeze)
 # ===========================================
 
 platform :ios, '15.0'
@@ -15,6 +11,7 @@ project 'Runner', {
   'Release' => :release,
 }
 
+# Flutter root
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first." unless File.exist?(generated_xcode_build_settings_path)
@@ -31,20 +28,31 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # -------------------------------------------
+  # 💥 Force Firebase to use gRPC-C++, NOT gRPC-Core
+  # -------------------------------------------
+  pod 'gRPC-C++', '~> 1.51.1'
+  pod 'abseil', '~> 1.20220623.0'
+  pod 'openssl-grpc', '~> 1.1.180'
+
+  # BLOCK gRPC-Core completely
+  $BLOCK_GPRC_CORE = true
 end
 
 # ===========================================
-# POST INSTALL CLEANUP & SEARCH PATH FIX
+# POST INSTALL: Fix Signing + Kill gRPC-Core + Search Paths
 # ===========================================
 post_install do |installer|
-  puts "🚧 Cleaning signing for Pods & setting manual for Runner..."
+  puts "🚧 post_install patch: disable pod signing, remove gRPC-Core, fix search paths..."
 
   flutter_framework_path = File.join(File.dirname(__FILE__), 'Flutter')
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # 🔧 Disable signing for all Pods
+      # 🔧 Disable signing for all pods
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
@@ -52,28 +60,31 @@ post_install do |installer|
       config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
       config.build_settings['DEVELOPMENT_TEAM'] = ''
 
-      # 📱 Minimum iOS target = 15.0
+      # iOS min target
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
 
-      # 🧩 Add Flutter.framework search path for all Pods
+      # Make Flutter.framework visible to pods
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
-      unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?(flutter_framework_path)
-        config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_path
-      end
+      config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_path unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?(flutter_framework_path)
+      config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '$(PROJECT_DIR)/Flutter' unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?('$(PROJECT_DIR)/Flutter')
+    end
 
-      # 🧩 Add explicit $(PROJECT_DIR)/Flutter for Swift module visibility
-      unless config.build_settings['FRAMEWORK_SEARCH_PATHS'].include?('$(PROJECT_DIR)/Flutter')
-        config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '$(PROJECT_DIR)/Flutter'
-      end
+    # ❌ HARD DELETE gRPC-Core target to avoid freeze
+    if target.name == 'gRPC-Core'
+      puts "⛔ Removing gRPC-Core target — prevents infinite freeze on M1/M2"
+      installer.pods_project.targets.delete(target)
     end
   end
 
-  # ✅ Manual signing for Runner only
+  # -------------------------------------------
+  # Runner signing ONLY
+  # -------------------------------------------
   installer.aggregate_targets.each do |aggregate_target|
     aggregate_target.user_project.native_targets.each do |target|
       next unless target.name == 'Runner'
+
       target.build_configurations.each do |config|
         config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'YES'
@@ -85,5 +96,5 @@ post_install do |installer|
     end
   end
 
-  puts "✅ post_install completed — Pods auto, Runner manual, all pods see Flutter.framework & module Flutter."
+  puts "✅ post_install completed successfully."
 end
