@@ -1,5 +1,5 @@
 workflows:
-  ios_adhoc_minimal:
+  ios_adhoc_final:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
@@ -19,11 +19,12 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧩 Install GNU timeout & basic tools
+      - name: 🧩 Setup environment
         script: |
           brew install coreutils || true
+          flutter doctor -v
 
-      - name: 🧼 Clean Flutter & Prepare xcconfig
+      - name: 🧼 Clean Flutter & prepare config
         script: |
           set -e
           flutter clean
@@ -31,60 +32,62 @@ workflows:
           mkdir -p ios/Flutter
           for cfg in Release Debug Profile; do
             if [ ! -f "ios/Flutter/$cfg.xcconfig" ]; then
-              echo "// Auto-created on Codemagic" > ios/Flutter/$cfg.xcconfig
+              echo "// Auto-created by Codemagic" > ios/Flutter/$cfg.xcconfig
             fi
           done
-          echo "✅ Ensured ios/Flutter/*.xcconfig exists."
 
-      - name: 📦 Install CocoaPods
+      - name: 📦 Pod reinstall (clean)
         script: |
           set -e
           cd ios
+          pod deintegrate
+          rm -rf Pods Podfile.lock
           pod repo update
           pod install
           cd ..
-          echo "✅ Pods installed successfully."
 
       - name: 🧱 Force rebuild Flutter.framework
         script: |
           set -e
-          echo "🧱 Forcing rebuild of Flutter.framework..."
           flutter precache --ios --force
-          
           ENGINE_DIR=$(find "$HOME/programs/flutter/bin/cache/artifacts/engine" -type d -name ios-release -print -quit)
-          if [ -z "$ENGINE_DIR" ]; then
-            echo "❌ ios-release engine not found!"
-            exit 1
-          fi
-
-          echo "✅ Found engine at: $ENGINE_DIR"
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
-
-          SLICE_PATH=""
-          if [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
-            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework"
-          elif [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
-            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework"
-          fi
-
-          if [ -z "$SLICE_PATH" ]; then
-            echo "❌ Could not find Flutter.framework slice!"
-            find "$ENGINE_DIR" -name "Flutter.framework"
-            exit 1
-          fi
-
-          cp -R "$SLICE_PATH" ios/Flutter/
-          echo "✅ Copied Flutter.framework to ios/Flutter/"
+          cp -R "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/ || true
           ls ios/Flutter/Flutter.framework/Headers || exit 1
 
       - name: 🚀 Build Flutter iOS (no codesign)
         script: |
           set -e
           echo "🚀 Building Flutter iOS (release, no codesign)..."
+          set +e
           flutter build ios --release --no-codesign -v
+          STATUS=$?
+          set -e
+          if [ $STATUS -ne 0 ]; then
+            echo "❌ Build failed. Dumping Xcode logs..."
+            find ~/Library/Logs -type f -name "*.log" -exec tail -n 80 {} \; || true
+            exit 1
+          fi
+          echo "✅ Flutter iOS build succeeded."
 
-      - name: 📦 Create exportOptions (Ad Hoc)
+      - name: 🏗️ Archive (manual signing)
+        script: |
+          set -e
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_IDENTITY="${CERT_NAME}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES
+
+      - name: 📦 Export signed IPA
         script: |
           set -e
           cat > ios/exportOptions_adhoc.plist << 'EOF'
@@ -106,31 +109,9 @@ workflows:
             <string>CS2UV6F3ZY</string>
             <key>compileBitcode</key>
             <false/>
-            <key>thinning</key>
-            <string>&lt;none&gt;</string>
           </dict>
           </plist>
           EOF
-
-      - name: 🏗️ Archive iOS (manual signing)
-        script: |
-          set -e
-          xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
-            CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES
-
-      - name: 📦 Export signed IPA
-        script: |
-          set -e
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
