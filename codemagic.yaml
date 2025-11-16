@@ -1,5 +1,5 @@
 workflows:
-  ios_adhoc_manual:
+  ios_adhoc_minimal:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
@@ -19,212 +19,86 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧩 Setup GNU utils
-        script: |
-          echo "🧩 Checking gtimeout availability..."
-          if ! command -v gtimeout >/dev/null 2>&1; then
-            echo "🧩 Installing GNU coreutils (adds gtimeout)..."
-            brew install coreutils || echo "⚠️ Brew failed, will build without timeout."
-          else
-            echo "✅ gtimeout already installed."
-          fi
-
-      - name: ⚙️ Limit parallel Xcode build threads
-        script: |
-          echo "⚙️ Limiting Xcode parallelism to avoid deadlocks..."
-          export NSUnbufferedIO=YES
-          export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
-          export SWIFT_ACTIVE_COMPILATION_CONDITIONS="RELEASE"
-          export CPUS=$(sysctl -n hw.ncpu)
-          echo "💡 CPU cores available: $CPUS — using 1 for safer build."
-
-      - name: 🧼 Clean DerivedData & Flutter Cache
+      - name: Install GNU timeout & basic tools
         script: |
           set -e
-          echo "🧼 Cleaning DerivedData and Flutter cache..."
-          rm -rf ~/Library/Developer/Xcode/DerivedData/*
-          rm -rf ios/Flutter/Flutter.framework
+          brew install coreutils || true
+          gtimeout --version || true
+
+      - name: Flutter clean & get
+        script: |
+          set -e
+          flutter --version
           flutter clean
           flutter pub get
-          flutter precache --ios --force
 
-      - name: 🧱 Ensure Flutter xcconfig files exist
+      - name: Install CocoaPods
         script: |
           set -e
-          echo "🧱 Ensuring Flutter iOS xcconfig files..."
-          mkdir -p ios/Flutter
-          for cfg in Release Debug Profile; do
-            if [ ! -f "ios/Flutter/$cfg.xcconfig" ]; then
-              echo "// Auto-created by Codemagic to avoid missing base configuration" > ios/Flutter/$cfg.xcconfig
-              echo "Created ios/Flutter/$cfg.xcconfig"
-            else
-              echo "✅ ios/Flutter/$cfg.xcconfig already exists."
-            fi
-          done
+          cd ios
+          pod repo update
+          pod install
+          cd ..
 
-      - name: 🧾 Ensure AppFrameworkInfo.plist exists
+      - name: Build Flutter iOS (no codesign)
         script: |
           set -e
-          echo "🧾 Ensuring ios/Flutter/AppFrameworkInfo.plist..."
-          mkdir -p ios/Flutter
-          cat > ios/Flutter/AppFrameworkInfo.plist <<'EOF'
+          flutter build ios --release --no-codesign
+
+      - name: Create exportOptions (Ad Hoc)
+        script: |
+          set -e
+          cat > ios/exportOptions_adhoc.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleDevelopmentRegion</key>
-            <string>en</string>
-            <key>CFBundleExecutable</key>
-            <string>App</string>
-            <key>CFBundleIdentifier</key>
-            <string>io.flutter.flutter.app</string>
-            <key>CFBundleInfoDictionaryVersion</key>
-            <string>6.0</string>
-            <key>CFBundleName</key>
-            <string>App</string>
-            <key>CFBundlePackageType</key>
-            <string>FMWK</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0</string>
-            <key>CFBundleSignature</key>
-            <string>????</string>
-            <key>CFBundleVersion</key>
-            <string>1.0</string>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>destination</key>
+            <string>export</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+              <string>wonderspace_gallery_adhoc</string>
+            </dict>
+            <key>teamID</key>
+            <string>CS2UV6F3ZY</string>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
           </dict>
           </plist>
           EOF
-          echo "✅ Created ios/Flutter/AppFrameworkInfo.plist"
 
-      - name: 📦 Install CocoaPods
+      - name: Archive (Manual signing)
         script: |
           set -e
-          echo "📦 Reinstalling CocoaPods..."
-          cd ios
-          rm -rf Pods Podfile.lock
-          pod deintegrate
-          pod cache clean --all
-          pod repo update
-          pod install
-          cd ..
-          echo "✅ Pods installed successfully."
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${TEAM_ID}" \
+            CODE_SIGN_IDENTITY="${CERT_NAME}" \
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES
 
-      - name: 🧱 Force Rebuild Flutter.framework Slice
+      - name: Export signed IPA
         script: |
           set -e
-          echo "🧱 Force rebuilding Flutter.framework slice (auto detect arm64_armv7)..."
-          flutter precache --ios --force
-          flutter --version
-          
-          ENGINE_DIR=$(find "$HOME/programs/flutter/bin/cache/artifacts/engine" -type d -name ios-release -print -quit)
-          if [ -z "$ENGINE_DIR" ]; then
-            echo "❌ No ios-release engine found!"
-            find "$HOME/programs/flutter/bin/cache/artifacts/engine" -maxdepth 3 -type d
-            exit 1
-          fi
-
-          echo "✅ Engine dir: $ENGINE_DIR"
-          mkdir -p ios/Flutter
-          rm -rf ios/Flutter/Flutter.framework
-
-          SLICE_PATH=""
-          if [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
-            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework"
-          elif [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
-            SLICE_PATH="$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework"
-          fi
-
-          if [ -z "$SLICE_PATH" ]; then
-            echo "❌ Could not find Flutter.framework slice!"
-            find "$ENGINE_DIR" -name "Flutter.framework"
-            exit 1
-          fi
-
-          cp -R "$SLICE_PATH" ios/Flutter/
-          echo "✅ Copied Flutter.framework from: $SLICE_PATH"
-          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Headers missing!" && exit 1)
-
-      - name: 🩺 Verify Flutter.framework before build
-        script: |
-          set -e
-          echo "📋 Verifying Flutter.framework integrity..."
-          if [ ! -d "ios/Flutter/Flutter.framework" ]; then
-            echo "❌ Flutter.framework missing before build!"
-            exit 1
-          fi
-          ls ios/Flutter/Flutter.framework/Headers || {
-            echo "❌ Flutter.framework headers missing!"
-            exit 1
-          }
-          echo "✅ Flutter.framework ready to build."
-
-      - name: 🧱 Build Flutter iOS (Release No-Codesign)
-        script: |
-          set -e
-          echo "🚀 Building Flutter iOS (verbose mode, 40min timeout)..."
-
-          TIME_CMD="flutter build ios --release --no-codesign -v"
-          if command -v gtimeout >/dev/null 2>&1; then
-            echo "⏱ Running with 40-minute timeout (gtimeout)..."
-            gtimeout 2400 bash -c "$TIME_CMD" || {
-              echo "❌ Flutter build timeout — likely stuck at Swift linking."
-              echo "📄 Dumping last 100 lines of flutter build log:"
-              find ~/Library/Logs -name "flutter*" -type f -exec tail -n 100 {} \; || true
-              exit 1
-            }
-          else
-            echo "⚠️ gtimeout not found — running without timeout..."
-            bash -c "$TIME_CMD"
-          fi
-
-          echo "✅ Flutter build completed successfully."
-
-      - name: 🚀 Build iOS Archive (Ad Hoc)
-        script: |
-          set -e
-          echo "📦 Archiving iOS build (30min timeout)..."
-
-          if command -v gtimeout >/dev/null 2>&1; then
-            gtimeout 1800 xcodebuild archive \
-              -workspace ios/Runner.xcworkspace \
-              -scheme Runner \
-              -configuration Release \
-              -archivePath build/ios/archive/Runner.xcarchive \
-              -destination 'generic/platform=iOS' \
-              CODE_SIGN_STYLE=Manual \
-              DEVELOPMENT_TEAM="${TEAM_ID}" \
-              CODE_SIGN_IDENTITY="${CERT_NAME}" \
-              PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-              CODE_SIGNING_ALLOWED=YES \
-              CODE_SIGNING_REQUIRED=YES || {
-                echo "❌ xcodebuild archive timeout — stuck or signing issue."
-                exit 1
-              }
-          else
-            echo "⚠️ gtimeout not found — running xcodebuild without timeout."
-            xcodebuild archive \
-              -workspace ios/Runner.xcworkspace \
-              -scheme Runner \
-              -configuration Release \
-              -archivePath build/ios/archive/Runner.xcarchive \
-              -destination 'generic/platform=iOS' \
-              CODE_SIGN_STYLE=Manual \
-              DEVELOPMENT_TEAM="${TEAM_ID}" \
-              CODE_SIGN_IDENTITY="${CERT_NAME}" \
-              PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-              CODE_SIGNING_ALLOWED=YES \
-              CODE_SIGNING_REQUIRED=YES
-          fi
-
-      - name: 📦 Export Signed IPA
-        script: |
-          set -e
-          echo "📦 Exporting signed IPA..."
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully!"
-          find build/ios/ipa -name "*.ipa"
+          echo "IPA files:"
+          find build/ios/ipa -name "*.ipa" -maxdepth 1
 
     artifacts:
       - build/ios/ipa/*.ipa
