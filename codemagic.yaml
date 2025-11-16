@@ -29,6 +29,15 @@ workflows:
             echo "✅ gtimeout already installed."
           fi
 
+      - name: ⚙️ Limit parallel Xcode build threads
+        script: |
+          echo "⚙️ Limiting Xcode parallelism to avoid deadlocks..."
+          export NSUnbufferedIO=YES
+          export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+          export SWIFT_ACTIVE_COMPILATION_CONDITIONS="RELEASE"
+          export CPUS=$(sysctl -n hw.ncpu)
+          echo "💡 CPU cores available: $CPUS — using 1 for safer build."
+
       - name: 🧼 Clean DerivedData & Flutter Cache
         script: |
           set -e
@@ -153,20 +162,21 @@ workflows:
           set -e
           echo "🚀 Building Flutter iOS (verbose mode, 40min timeout)..."
 
+          TIME_CMD="flutter build ios --release --no-codesign -v"
           if command -v gtimeout >/dev/null 2>&1; then
-            echo "⏱ Using gtimeout (2400s = 40min)..."
-            gtimeout 2400 flutter build ios --release --no-codesign -v || {
-              echo "❌ Flutter build timeout — possible stuck during linking or Swift compile."
-              echo "📄 Dumping last 100 lines of flutter build logs..."
-              tail -n 100 ~/Library/Logs/flutter_*.log || true
+            echo "⏱ Running with 40-minute timeout (gtimeout)..."
+            gtimeout 2400 bash -c "$TIME_CMD" || {
+              echo "❌ Flutter build timeout — likely stuck at Swift linking."
+              echo "📄 Dumping last 100 lines of flutter build log:"
+              find ~/Library/Logs -name "flutter*" -type f -exec tail -n 100 {} \; || true
               exit 1
             }
           else
-            echo "⚠️ gtimeout not found — running without timeout."
-            flutter build ios --release --no-codesign -v
+            echo "⚠️ gtimeout not found — running without timeout..."
+            bash -c "$TIME_CMD"
           fi
 
-          echo "✅ Flutter build completed."
+          echo "✅ Flutter build completed successfully."
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
