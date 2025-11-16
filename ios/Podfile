@@ -1,7 +1,3 @@
-# ===================================================
-# Wonder Space Gallery – Podfile (Firebase 12.x Official)
-# ===================================================
-
 platform :ios, '15.0'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -11,7 +7,6 @@ project 'Runner', {
   'Release' => :release,
 }
 
-# Flutter Root
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first." unless File.exist?(generated_xcode_build_settings_path)
@@ -28,54 +23,38 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
-
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
-# ===================================================
-# POST INSTALL
-# ===================================================
 post_install do |installer|
-  puts "🚧 post_install: disable pod signing + fix search paths..."
-
   flutter_framework_path = File.join(File.dirname(__FILE__), 'Flutter')
 
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
-      # Disable signing for Pods
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+
+      # disable signing for Pods
       config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
       config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
       config.build_settings['CODE_SIGN_STYLE'] = 'Automatic'
-      config.build_settings['CODE_SIGN_IDENTITY'] = ''
-      config.build_settings['DEVELOPMENT_TEAM'] = ''
-      config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = ''
 
-      # Force iOS 15
-      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-      end
-
-      # Ensure Flutter.framework is always found
+      # ensure Flutter.framework search paths
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] ||= ['$(inherited)']
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] << flutter_framework_path
       config.build_settings['FRAMEWORK_SEARCH_PATHS'] << '$(PROJECT_DIR)/Flutter'
     end
   end
 
-  # Runner signing ONLY
   installer.aggregate_targets.each do |aggregate_target|
     aggregate_target.user_project.native_targets.each do |target|
       next unless target.name == 'Runner'
-
       target.build_configurations.each do |config|
-        config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
         config.build_settings['CODE_SIGNING_ALLOWED'] = 'YES'
-        config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
+        config.build_settings['CODE_SIGN_STYLE'] = 'Manual'
         config.build_settings['DEVELOPMENT_TEAM'] = 'CS2UV6F3ZY'
+        config.build_settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)'
         config.build_settings['PROVISIONING_PROFILE_SPECIFIER'] = 'wonderspace_gallery_adhoc'
       end
     end
   end
-
-  puts "✅ post_install completed."
 end
