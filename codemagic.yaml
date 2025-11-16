@@ -19,27 +19,39 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
+      # -------------------------------------------
+      # 1️⃣ CLEAN & PREPARE
+      # -------------------------------------------
       - name: 🧹 Clean Flutter & pub get
         script: |
           set -e
           flutter clean
           flutter pub get
 
-      - name: 📦 Install Pods (repo-update)
+      # -------------------------------------------
+      # 2️⃣ INSTALL PODS (CHUẨN – KHÔNG XOÁ PODS)
+      # -------------------------------------------
+      - name: 📦 Install CocoaPods (repo-update)
         script: |
           set -e
           cd ios
-          rm -rf Pods Podfile.lock
           pod install --repo-update
           cd ..
           echo "✅ Pods installed successfully."
 
+      # -------------------------------------------
+      # 3️⃣ BUILD FLUTTER IOS (NO-CODESIGN)
+      # -------------------------------------------
       - name: 🚀 Build Flutter iOS (no codesign)
         script: |
           set -e
           echo "🚀 flutter build ios --release --no-codesign"
           flutter build ios --release --no-codesign -v
+          echo "✅ Flutter iOS build succeeded."
 
+      # -------------------------------------------
+      # 4️⃣ ARCHIVE IPA WITH MANUAL SIGNING
+      # -------------------------------------------
       - name: 🏗️ Archive (manual signing)
         script: |
           set -e
@@ -56,7 +68,10 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export IPA
+      # -------------------------------------------
+      # 5️⃣ EXPORT IPA
+      # -------------------------------------------
+      - name: 📦 Export signed IPA
         script: |
           set -e
           cat > ios/exportOptions_adhoc.plist << 'EOF'
@@ -75,7 +90,7 @@ workflows:
               <string>wonderspace_gallery_adhoc</string>
             </dict>
             <key>teamID</key>
-            <string>CS2UV6F3ZY</string>
+            <string>${TEAM_ID}</string>
             <key>compileBitcode</key>
             <false/>
           </dict>
@@ -87,6 +102,7 @@ workflows:
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
 
+          echo "🎉 IPA exported:"
           find build/ios/ipa -name "*.ipa"
 
     artifacts:
