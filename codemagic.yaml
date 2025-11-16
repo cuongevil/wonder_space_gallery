@@ -19,85 +19,26 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      - name: 🧩 Setup environment
-        script: |
-          brew install coreutils || true
-          flutter doctor -v
-
-      - name: 🧼 Clean Flutter & pub get
+      - name: 🧹 Clean Flutter & pub get
         script: |
           set -e
           flutter clean
           flutter pub get
 
-      - name: 🧱 Fix Flutter xcconfig includes (CRITICAL)
-        script: |
-          set -e
-          mkdir -p ios/Flutter
-          cat > ios/Flutter/Debug.xcconfig <<'EOF'
-          // Auto-fixed by CI
-          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
-          #include "Generated.xcconfig"
-          EOF
-
-          cat > ios/Flutter/Profile.xcconfig <<'EOF'
-          // Auto-fixed by CI
-          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
-          #include "Generated.xcconfig"
-          EOF
-
-          cat > ios/Flutter/Release.xcconfig <<'EOF'
-          // Auto-fixed by CI
-          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
-          #include "Generated.xcconfig"
-          EOF
-          echo "✅ Rewrote ios/Flutter/*.xcconfig includes."
-
-      - name: 📦 Reinstall CocoaPods
+      - name: 📦 Install Pods (repo-update)
         script: |
           set -e
           cd ios
-          pod deintegrate
           rm -rf Pods Podfile.lock
-          pod repo update
-          pod install
+          pod install --repo-update
           cd ..
-          echo "✅ Pods reinstalled successfully."
-
-      - name: 🧱 Ensure Flutter.framework exists
-        script: |
-          set -e
-          echo "🧱 Ensuring Flutter.framework exists..."
-          flutter precache --ios --force
-          ENGINE_DIR=$(find "$HOME/programs/flutter/bin/cache/artifacts/engine" -type d -name ios-release -print -quit)
-          if [ -z "$ENGINE_DIR" ]; then
-            echo "❌ ios-release engine not found"
-            exit 1
-          fi
-          mkdir -p ios/Flutter
-          rm -rf ios/Flutter/Flutter.framework
-          if [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
-            cp -R "$ENGINE_DIR/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/
-          elif [ -d "$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
-            cp -R "$ENGINE_DIR/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ios/Flutter/
-          fi
-          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Flutter.framework headers missing!" && exit 1)
-          echo "✅ Flutter.framework ready."
+          echo "✅ Pods installed successfully."
 
       - name: 🚀 Build Flutter iOS (no codesign)
         script: |
           set -e
-          echo "🚀 Building Flutter iOS (release, no codesign)..."
-          set +e
+          echo "🚀 flutter build ios --release --no-codesign"
           flutter build ios --release --no-codesign -v
-          STATUS=$?
-          set -e
-          if [ $STATUS -ne 0 ]; then
-            echo "❌ Build failed — dumping Xcode logs"
-            find ~/Library/Logs -type f -name "*.log" -exec tail -n 100 {} \; || true
-            exit 1
-          fi
-          echo "✅ Flutter iOS build succeeded."
 
       - name: 🏗️ Archive (manual signing)
         script: |
@@ -115,7 +56,7 @@ workflows:
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=YES
 
-      - name: 📦 Export signed IPA
+      - name: 📦 Export IPA
         script: |
           set -e
           cat > ios/exportOptions_adhoc.plist << 'EOF'
@@ -140,11 +81,12 @@ workflows:
           </dict>
           </plist>
           EOF
+
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions_adhoc.plist \
             -exportPath build/ios/ipa
-          echo "✅ IPA exported successfully!"
+
           find build/ios/ipa -name "*.ipa"
 
     artifacts:
