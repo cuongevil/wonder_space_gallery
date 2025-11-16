@@ -19,6 +19,16 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
+      - name: 🧩 Setup GNU utils
+        script: |
+          echo "🧩 Checking gtimeout availability..."
+          if ! command -v gtimeout >/dev/null 2>&1; then
+            echo "🧩 Installing GNU coreutils (adds gtimeout)..."
+            brew install coreutils || echo "⚠️ Brew failed, will build without timeout."
+          else
+            echo "✅ gtimeout already installed."
+          fi
+
       - name: 🧼 Clean DerivedData & Flutter Cache
         script: |
           set -e
@@ -142,33 +152,58 @@ workflows:
         script: |
           set -e
           echo "🚀 Building Flutter iOS (verbose mode, 40min timeout)..."
-          timeout 2400 flutter build ios --release --no-codesign -v || {
-            echo "❌ Flutter build timeout — possible stuck during linking or Swift compile."
-            echo "📄 Dumping last 100 lines of flutter build logs..."
-            tail -n 100 ~/Library/Logs/flutter_*.log || true
-            exit 1
-          }
+
+          if command -v gtimeout >/dev/null 2>&1; then
+            echo "⏱ Using gtimeout (2400s = 40min)..."
+            gtimeout 2400 flutter build ios --release --no-codesign -v || {
+              echo "❌ Flutter build timeout — possible stuck during linking or Swift compile."
+              echo "📄 Dumping last 100 lines of flutter build logs..."
+              tail -n 100 ~/Library/Logs/flutter_*.log || true
+              exit 1
+            }
+          else
+            echo "⚠️ gtimeout not found — running without timeout."
+            flutter build ios --release --no-codesign -v
+          fi
+
           echo "✅ Flutter build completed."
 
       - name: 🚀 Build iOS Archive (Ad Hoc)
         script: |
           set -e
           echo "📦 Archiving iOS build (30min timeout)..."
-          timeout 1800 xcodebuild archive \
-            -workspace ios/Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="${TEAM_ID}" \
-            CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES || {
-              echo "❌ xcodebuild archive timeout — stuck or signing issue."
-              exit 1
-            }
+
+          if command -v gtimeout >/dev/null 2>&1; then
+            gtimeout 1800 xcodebuild archive \
+              -workspace ios/Runner.xcworkspace \
+              -scheme Runner \
+              -configuration Release \
+              -archivePath build/ios/archive/Runner.xcarchive \
+              -destination 'generic/platform=iOS' \
+              CODE_SIGN_STYLE=Manual \
+              DEVELOPMENT_TEAM="${TEAM_ID}" \
+              CODE_SIGN_IDENTITY="${CERT_NAME}" \
+              PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+              CODE_SIGNING_ALLOWED=YES \
+              CODE_SIGNING_REQUIRED=YES || {
+                echo "❌ xcodebuild archive timeout — stuck or signing issue."
+                exit 1
+              }
+          else
+            echo "⚠️ gtimeout not found — running xcodebuild without timeout."
+            xcodebuild archive \
+              -workspace ios/Runner.xcworkspace \
+              -scheme Runner \
+              -configuration Release \
+              -archivePath build/ios/archive/Runner.xcarchive \
+              -destination 'generic/platform=iOS' \
+              CODE_SIGN_STYLE=Manual \
+              DEVELOPMENT_TEAM="${TEAM_ID}" \
+              CODE_SIGN_IDENTITY="${CERT_NAME}" \
+              PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
+              CODE_SIGNING_ALLOWED=YES \
+              CODE_SIGNING_REQUIRED=YES
+          fi
 
       - name: 📦 Export Signed IPA
         script: |
