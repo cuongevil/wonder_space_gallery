@@ -69,8 +69,6 @@ workflows:
             echo "❌ Flutter build failed (see flutter_build.log in artifacts)"
             exit $STATUS
           fi
-        artifacts:
-          - flutter_build.log
 
       - name: Archive IPA
         script: |
@@ -90,27 +88,28 @@ workflows:
         script: |
           set -e
           cat > ios/exportOptions.plist <<EOF
-            <?xml version="1.0" encoding="UTF-8"?>
-            <plist version="1.0">
-            <dict>
+          <?xml version="1.0" encoding="UTF-8"?>
+          <plist version="1.0">
+          <dict>
             <key>method</key>
             <string>ad-hoc</string>
             <key>teamID</key>
             <string>${TEAM_ID}</string>
             <key>provisioningProfiles</key>
             <dict>
-            <key>com.ctmd.wonderforge.wonderspace.gallery</key>
-            <string>${PROFILE_NAME}</string>
+              <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+              <string>${PROFILE_NAME}</string>
             </dict>
-            </dict>
-            </plist>
-            EOF
-            
-            xcodebuild -exportArchive \
-              -archivePath build/ios/archive/Runner.xcarchive \
-              -exportOptionsPlist ios/exportOptions.plist \
-              -exportPath build/ios/ipa
+          </dict>
+          </plist>
+          EOF
+          
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist ios/exportOptions.plist \
+            -exportPath build/ios/ipa
 
 artifacts:
   - build/ios/ipa/*.ipa
+  - flutter_build.log
   - ios/exportOptions.plist
