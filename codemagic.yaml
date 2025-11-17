@@ -1,6 +1,6 @@
 workflows:
   ios_adhoc_final:
-    name: iOS AdHoc (Wonder Space Gallery)
+    name: WonderSpace iOS AdHoc
     instance_type: mac_mini_m2
     max_build_duration: 120
 
@@ -14,47 +14,86 @@ workflows:
         bundle_identifier: com.ctmd.wonderforge.wonderspace.gallery
       vars:
         TEAM_ID: "CS2UV6F3ZY"
-        BUNDLE_ID: "com.ctmd.wonderforge.wonderspace.gallery"
         CERT_NAME: "Apple Distribution: Cuong Nguyen Ba (CS2UV6F3ZY)"
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      # -------------------------------------------
-      # 1️⃣ CLEAN & PREPARE
-      # -------------------------------------------
-      - name: 🧹 Clean Flutter & pub get
+      # -----------------------------------------------------
+      # 1. FLUTTER CLEAN + PUB
+      # -----------------------------------------------------
+      - name: Clean Flutter
         script: |
-          set -e
           flutter clean
           flutter pub get
 
-      # -------------------------------------------
-      # 2️⃣ INSTALL PODS (CHUẨN – KHÔNG XOÁ PODS)
-      # -------------------------------------------
-      - name: 📦 Install CocoaPods (repo-update)
+      # -----------------------------------------------------
+      # 2. RESET ios/Flutter/*.xcconfig (NO ERRORS)
+      # -----------------------------------------------------
+      - name: Rebuild xcconfig
         script: |
-          set -e
+          mkdir -p ios/Flutter
+
+          echo '#include "Generated.xcconfig"' > ios/Flutter/Debug.xcconfig
+          echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
+          echo '#include "Generated.xcconfig"' > ios/Flutter/Profile.xcconfig
+
+          echo '$(inherited)' >> ios/Flutter/Debug.xcconfig
+          echo '$(inherited)' >> ios/Flutter/Release.xcconfig
+          echo '$(inherited)' >> ios/Flutter/Profile.xcconfig
+
+      # -----------------------------------------------------
+      # 3. POD INSTALL (NO DEINTEGRATE)
+      # -----------------------------------------------------
+      - name: Install Pods
+        script: |
           cd ios
-          pod install --repo-update
+          rm -rf Podfile.lock
+          pod repo update
+          pod install --verbose
           cd ..
-          echo "✅ Pods installed successfully."
 
-      # -------------------------------------------
-      # 3️⃣ BUILD FLUTTER IOS (NO-CODESIGN)
-      # -------------------------------------------
-      - name: 🚀 Build Flutter iOS (no codesign)
+      # -----------------------------------------------------
+      # 4. Copy Flutter.framework đúng slice ARM64
+      # -----------------------------------------------------
+      - name: Ensure Flutter.framework (ARM64 ONLY)
         script: |
-          set -e
-          echo "🚀 flutter build ios --release --no-codesign"
+          flutter precache --ios
+
+          ENGINE=$(find $HOME/programs/flutter/bin/cache/artifacts/engine -name ios-release -type d | head -1)
+
+          echo "ENGINE PATH: $ENGINE"
+
+          rm -rf ios/Flutter/Flutter.framework
+
+          cp -R $ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework ios/Flutter/
+
+          ls ios/Flutter/Flutter.framework/Headers || exit 1
+
+      # -----------------------------------------------------
+      # 5. ADD FRAMEWORK SEARCH PATHS TRỰC TIẾP TRONG XCODE PROJECT
+      # (Fix lỗi sqflite_darwin không tìm Flutter.h)
+      # -----------------------------------------------------
+      - name: Patch Runner.xcodeproj search paths
+        script: |
+          FILE="ios/Runner.xcodeproj/project.pbxproj"
+          echo "Patching Runner.xcodeproj…"
+
+          sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n"$(PROJECT_DIR)\/Flutter",/g' $FILE
+
+          sed -i '' 's/HEADER_SEARCH_PATHS = (/HEADER_SEARCH_PATHS = (\n"$(PROJECT_DIR)\/Flutter\/Flutter.framework\/Headers",/g' $FILE
+
+      # -----------------------------------------------------
+      # 6. BUILD FLUTTER (NO CODESIGN)
+      # -----------------------------------------------------
+      - name: Build Flutter iOS
+        script: |
           flutter build ios --release --no-codesign -v
-          echo "✅ Flutter iOS build succeeded."
 
-      # -------------------------------------------
-      # 4️⃣ ARCHIVE IPA WITH MANUAL SIGNING
-      # -------------------------------------------
-      - name: 🏗️ Archive (manual signing)
+      # -----------------------------------------------------
+      # 7. ARCHIVE
+      # -----------------------------------------------------
+      - name: Archive AdHoc IPA
         script: |
-          set -e
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -65,45 +104,38 @@ workflows:
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES
+            CODE_SIGNING_ALLOWED=YES
 
-      # -------------------------------------------
-      # 5️⃣ EXPORT IPA
-      # -------------------------------------------
-      - name: 📦 Export signed IPA
+      # -----------------------------------------------------
+      # 8. EXPORT IPA
+      # -----------------------------------------------------
+      - name: Export IPA
         script: |
-          set -e
-          cat > ios/exportOptions_adhoc.plist << 'EOF'
+          cat > ios/exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-           "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key>
             <string>ad-hoc</string>
             <key>signingStyle</key>
             <string>manual</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
             <key>provisioningProfiles</key>
             <dict>
               <key>com.ctmd.wonderforge.wonderspace.gallery</key>
-              <string>wonderspace_gallery_adhoc</string>
+              <string>${PROFILE_NAME}</string>
             </dict>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>compileBitcode</key>
-            <false/>
           </dict>
           </plist>
           EOF
 
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions_adhoc.plist \
+            -exportOptionsPlist ios/exportOptions.plist \
             -exportPath build/ios/ipa
-
-          echo "🎉 IPA exported:"
-          find build/ios/ipa -name "*.ipa"
 
     artifacts:
       - build/ios/ipa/*.ipa
