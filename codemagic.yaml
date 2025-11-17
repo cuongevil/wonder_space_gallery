@@ -18,14 +18,14 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      # 1. FLUTTER CLEAN + PUB GET
+      # 1. CLEAN
       - name: Clean Flutter
         script: |
           set -e
           flutter clean
           flutter pub get
 
-      # 2. REBUILD ios/Flutter/*.xcconfig CHUẨN FLUTTER + COCOAPODS
+      # 2. REBUILD xcconfig
       - name: Rebuild Flutter xcconfig
         script: |
           set -e
@@ -46,8 +46,6 @@ workflows:
           #include "Generated.xcconfig"
           EOF
 
-          echo "✅ Recreated ios/Flutter/*.xcconfig."
-
       # 3. POD INSTALL
       - name: Install Pods
         script: |
@@ -57,82 +55,64 @@ workflows:
           pod repo update
           pod install --verbose
           cd ..
-          echo "✅ Pods installed."
 
-      # 4. ĐẢM BẢO Flutter.framework (ARM64)
-      - name: Ensure Flutter.framework (ARM64 ONLY)
+      # 4. Flutter.framework
+      - name: Ensure Flutter.framework
         script: |
           set -e
           flutter precache --ios
 
           ENGINE=$(find $HOME/programs/flutter/bin/cache/artifacts/engine -name ios-release -type d | head -1)
-          echo "ENGINE PATH: $ENGINE"
+          echo "ENGINE = $ENGINE"
 
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
 
           if [ -d "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
             cp -R "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/
-          elif [ -d "$ENGINE/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
-            cp -R "$ENGINE/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ios/Flutter/
           else
-            echo "❌ Không tìm thấy Flutter.framework slice phù hợp."
-            find "$ENGINE" -name "Flutter.framework"
-            exit 1
+            cp -R "$ENGINE/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ios/Flutter/
           fi
 
-          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Thiếu Headers của Flutter.framework" && exit 1)
-          echo "✅ Flutter.framework ok."
-
-      # 5. PATCH SEARCH PATHS TRONG Runner.xcodeproj (CHO CHẮC ĂN)
-      - name: Patch Runner.xcodeproj search paths
+      # 5. PATCH XCODE PROJECT
+      - name: Patch xcodeproj
         script: |
           set -e
           FILE="ios/Runner.xcodeproj/project.pbxproj"
-          echo "🔧 Patching $FILE ..."
 
-          # Thêm $(PROJECT_DIR)/Flutter vào FRAMEWORK_SEARCH_PATHS nếu chưa có
-          if ! grep -q '\$(PROJECT_DIR)/Flutter' "$FILE"; then
-            sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter",/g' "$FILE"
-          fi
+          sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter",/g' "$FILE"
+          sed -i '' 's/HEADER_SEARCH_PATHS = (/HEADER_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter\/Flutter.framework\/Headers",/g' "$FILE"
 
-          # Thêm header path cho Flutter.framework
-          if ! grep -q 'Flutter.framework/Headers' "$FILE"; then
-            sed -i '' 's/HEADER_SEARCH_PATHS = (/HEADER_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter\/Flutter.framework\/Headers",/g' "$FILE"
-          fi
-
-          echo "✅ Updated FRAMEWORK_SEARCH_PATHS & HEADER_SEARCH_PATHS."
-
-      # 6. BUILD FLUTTER IOS (NO CODESIGN) + BẮT LỖI XCODE RÕ RÀNG
+      # 6. BUILD IOS — WITH REAL XCODE LOG CAPTURE
       - name: Build Flutter iOS
         script: |
-          set -e
-          echo "🚀 flutter build ios --release --no-codesign -v"
-
-          # Không để set -e làm dừng ngay, để còn phân tích log
+          echo "🚀 Building Flutter iOS…"
+          
           set +e
-          flutter build ios --release --no-codesign -v | tee flutter_build.log
-          STATUS=${PIPESTATUS[0]}
+          flutter build ios --release --no-codesign -v
+          STATUS=$?
           set -e
+
+          # ALWAYS DUMP XCODE LOGS
+          echo "===== Dumping DerivedData Logs ====="
+          LOG_DIR=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "Logs" | head -1)
+          find "$LOG_DIR" -name "*.xcactivitylog" -exec echo "---- {} ----" \; -exec strings {} \; | tail -n 200 || true
+          
+          echo "===== Dumping .xcresult errors ====="
+          find . -name "*.xcresult" -exec xcrun xcresulttool get --format json --path {} \; 2>/dev/null | jq -r '..|.message? // empty' | tail -n 40 || true
+
+          echo "===== Searching for Swift/Clang errors ====="
+          grep -R "error:" -n ~/Library/Developer/Xcode/DerivedData | tail -n 50 || true
 
           if [ $STATUS -ne 0 ]; then
-            echo "❌ Flutter build failed, trying to extract Xcode errors..."
-            echo "===== Last 80 lines (full) ====="
-            tail -n 80 flutter_build.log || true
-
-            echo "===== Error (Xcode) lines ====="
-            grep -n "Error (Xcode)" flutter_build.log | tail -n 20 || echo "No 'Error (Xcode)' lines found"
-
-            echo "===== ' error:' lines ====="
-            grep -n " error:" flutter_build.log | tail -n 40 || echo "No ' error:' lines found"
-
+            echo "❌ Flutter build failed."
             exit $STATUS
           fi
 
-          echo "✅ Flutter iOS build succeeded."
+          echo "✅ Flutter iOS build success."
 
-      # 7. ARCHIVE IPA (SIGNED)
-      - name: Archive AdHoc IPA
+      # 7. ARCHIVE IPA
+      - name: Archive IPA
         script: |
           set -e
           xcodebuild archive \
@@ -140,13 +120,11 @@ workflows:
             -scheme Runner \
             -configuration Release \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -destination 'generic/platform=iOS' \
+            -destination "generic/platform=iOS" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
-            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGNING_REQUIRED=YES
+            PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}"
 
       # 8. EXPORT IPA
       - name: Export IPA
@@ -157,19 +135,19 @@ workflows:
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
           "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>ad-hoc</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>teamID</key>
-            <string>${TEAM_ID}</string>
-            <key>provisioningProfiles</key>
             <dict>
-              <key>com.ctmd.wonderforge.wonderspace.gallery</key>
-              <string>${PROFILE_NAME}</string>
+              <key>method</key>
+              <string>ad-hoc</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>teamID</key>
+              <string>${TEAM_ID}</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+                <string>${PROFILE_NAME}</string>
+              </dict>
             </dict>
-          </dict>
           </plist>
           EOF
 
@@ -177,9 +155,6 @@ workflows:
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions.plist \
             -exportPath build/ios/ipa
-
-          echo "✅ IPA exported:"
-          find build/ios/ipa -name "*.ipa" -maxdepth 1 || true
 
     artifacts:
       - build/ios/ipa/*.ipa
