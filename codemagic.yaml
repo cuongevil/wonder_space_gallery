@@ -21,6 +21,7 @@ workflows:
       # 1. FLUTTER CLEAN + PUB GET
       - name: Clean Flutter
         script: |
+          set -e
           flutter clean
           flutter pub get
 
@@ -45,7 +46,7 @@ workflows:
           #include "Generated.xcconfig"
           EOF
 
-          echo "✅ Recreated ios/Flutter/*.xcconfig giống template Flutter."
+          echo "✅ Recreated ios/Flutter/*.xcconfig."
 
       # 3. POD INSTALL
       - name: Install Pods
@@ -91,7 +92,7 @@ workflows:
           echo "🔧 Patching $FILE ..."
 
           # Thêm $(PROJECT_DIR)/Flutter vào FRAMEWORK_SEARCH_PATHS nếu chưa có
-          if ! grep -q '$(PROJECT_DIR)/Flutter' "$FILE"; then
+          if ! grep -q '\$(PROJECT_DIR)/Flutter' "$FILE"; then
             sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter",/g' "$FILE"
           fi
 
@@ -102,12 +103,33 @@ workflows:
 
           echo "✅ Updated FRAMEWORK_SEARCH_PATHS & HEADER_SEARCH_PATHS."
 
-      # 6. BUILD FLUTTER (NO CODESIGN)
+      # 6. BUILD FLUTTER IOS (NO CODESIGN) + BẮT LỖI XCODE RÕ RÀNG
       - name: Build Flutter iOS
         script: |
           set -e
-          echo "🚀 flutter build ios --release --no-codesign"
-          flutter build ios --release --no-codesign -v
+          echo "🚀 flutter build ios --release --no-codesign -v"
+
+          # Không để set -e làm dừng ngay, để còn phân tích log
+          set +e
+          flutter build ios --release --no-codesign -v | tee flutter_build.log
+          STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ $STATUS -ne 0 ]; then
+            echo "❌ Flutter build failed, trying to extract Xcode errors..."
+            echo "===== Last 80 lines (full) ====="
+            tail -n 80 flutter_build.log || true
+
+            echo "===== Error (Xcode) lines ====="
+            grep -n "Error (Xcode)" flutter_build.log | tail -n 20 || echo "No 'Error (Xcode)' lines found"
+
+            echo "===== ' error:' lines ====="
+            grep -n " error:" flutter_build.log | tail -n 40 || echo "No ' error:' lines found"
+
+            exit $STATUS
+          fi
+
+          echo "✅ Flutter iOS build succeeded."
 
       # 7. ARCHIVE IPA (SIGNED)
       - name: Archive AdHoc IPA
