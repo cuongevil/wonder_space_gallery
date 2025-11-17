@@ -91,23 +91,23 @@ workflows:
           <?xml version="1.0" encoding="UTF-8"?>
           <plist version="1.0">
           <dict>
-          <key>method</key>
-          <string>ad-hoc</string>
-          <key>teamID</key>
-          <string>${TEAM_ID}</string>
-          <key>provisioningProfiles</key>
-          <dict>
-          <key>com.ctmd.wonderforge.wonderspace.gallery</key>
-          <string>${PROFILE_NAME}</string>
-          </dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
           </dict>
           </plist>
           EOF
-  
-          xcodebuild -exportArchive \
-          -archivePath build/ios/archive/Runner.xcarchive \
-          -exportOptionsPlist ios/exportOptions.plist \
-          -exportPath build/ios/ipa
 
-artifacts:
-  - build/ios/ipa/*.ipa
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist ios/exportOptions.plist \
+            -exportPath build/ios/ipa
+
+    artifacts:
+      - build/ios/ipa/*.ipa
