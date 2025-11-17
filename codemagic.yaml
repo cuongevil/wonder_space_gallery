@@ -1,5 +1,5 @@
 workflows:
-  ios_adhoc_final:
+  ios_adhoc_fixed:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
@@ -18,100 +18,60 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      # 1. CLEAN
       - name: Clean Flutter
         script: |
           set -e
           flutter clean
           flutter pub get
 
-      # 2. REBUILD xcconfig
-      - name: Rebuild Flutter xcconfig
-        script: |
-          set -e
-          mkdir -p ios/Flutter
-
-          cat > ios/Flutter/Debug.xcconfig << 'EOF'
-          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
-          #include "Generated.xcconfig"
-          EOF
-
-          cat > ios/Flutter/Profile.xcconfig << 'EOF'
-          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"
-          #include "Generated.xcconfig"
-          EOF
-
-          cat > ios/Flutter/Release.xcconfig << 'EOF'
-          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
-          #include "Generated.xcconfig"
-          EOF
-
-      # 3. POD INSTALL
-      - name: Install Pods
+      - name: Remove all Pod caches + lockfiles
         script: |
           set -e
           cd ios
+          pod deintegrate || true
+          rm -rf Pods
           rm -rf Podfile.lock
-          pod repo update
-          pod install --verbose
+          rm -rf ~/Library/Caches/CocoaPods
+          rm -rf ~/.cocoapods
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
           cd ..
 
-      # 4. Flutter.framework
+      - name: Pod install (fresh)
+        script: |
+          set -e
+          cd ios
+          pod repo update
+          pod install --clean-install
+          cd ..
+
       - name: Ensure Flutter.framework
         script: |
           set -e
           flutter precache --ios
-
           ENGINE=$(find $HOME/programs/flutter/bin/cache/artifacts/engine -name ios-release -type d | head -1)
           echo "ENGINE = $ENGINE"
-
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
-
           if [ -d "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
             cp -R "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/
           else
             cp -R "$ENGINE/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ios/Flutter/
           fi
 
-      # 5. PATCH XCODE PROJECT
-      - name: Patch xcodeproj
-        script: |
-          set -e
-          FILE="ios/Runner.xcodeproj/project.pbxproj"
-
-          sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter",/g' "$FILE"
-          sed -i '' 's/HEADER_SEARCH_PATHS = (/HEADER_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter\/Flutter.framework\/Headers",/g' "$FILE"
-
-      # 6. BUILD IOS — WITH REAL XCODE LOG CAPTURE
       - name: Build Flutter iOS
         script: |
-          echo "🚀 Building Flutter iOS…"
-          
+          echo "🚀 Building iOS…"
           set +e
           flutter build ios --release --no-codesign -v
           STATUS=$?
           set -e
-
-          # ALWAYS DUMP XCODE LOGS
-          echo "===== Dumping DerivedData Logs ====="
-          LOG_DIR=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "Logs" | head -1)
-          find "$LOG_DIR" -name "*.xcactivitylog" -exec echo "---- {} ----" \; -exec strings {} \; | tail -n 200 || true
-          
-          echo "===== Dumping .xcresult errors ====="
-          find . -name "*.xcresult" -exec xcrun xcresulttool get --format json --path {} \; 2>/dev/null | jq -r '..|.message? // empty' | tail -n 40 || true
-
-          echo "===== Searching for Swift/Clang errors ====="
+          echo "===== SEARCHING FOR REAL ERRORS ====="
           grep -R "error:" -n ~/Library/Developer/Xcode/DerivedData | tail -n 50 || true
-
           if [ $STATUS -ne 0 ]; then
-            echo "❌ Flutter build failed."
+            echo "❌ Build failed"
             exit $STATUS
           fi
 
-          echo "✅ Flutter iOS build success."
-
-      # 7. ARCHIVE IPA
       - name: Archive IPA
         script: |
           set -e
@@ -126,20 +86,15 @@ workflows:
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}"
 
-      # 8. EXPORT IPA
       - name: Export IPA
         script: |
           set -e
           cat > ios/exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-          "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
             <dict>
               <key>method</key>
               <string>ad-hoc</string>
-              <key>signingStyle</key>
-              <string>manual</string>
               <key>teamID</key>
               <string>${TEAM_ID}</string>
               <key>provisioningProfiles</key>
@@ -149,12 +104,12 @@ workflows:
               </dict>
             </dict>
           </plist>
-          EOF
+  EOF
+  
+  xcodebuild -exportArchive \
+  -archivePath build/ios/archive/Runner.xcarchive \
+  -exportOptionsPlist ios/exportOptions.plist \
+  -exportPath build/ios/ipa
 
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions.plist \
-            -exportPath build/ios/ipa
-
-    artifacts:
-      - build/ios/ipa/*.ipa
+artifacts:
+  - build/ios/ipa/*.ipa
