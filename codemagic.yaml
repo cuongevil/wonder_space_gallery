@@ -1,5 +1,5 @@
 workflows:
-  ios_adhoc_fixed:
+  ios_adhoc_final:
     name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
@@ -24,34 +24,26 @@ workflows:
           flutter clean
           flutter pub get
 
-      - name: Remove all Pod caches + lockfiles
+      - name: Reset Pods
         script: |
           set -e
           cd ios
           pod deintegrate || true
-          rm -rf Pods
-          rm -rf Podfile.lock
-          rm -rf ~/Library/Caches/CocoaPods
-          rm -rf ~/.cocoapods
-          rm -rf ~/Library/Developer/Xcode/DerivedData/*
-          cd ..
-
-      - name: Pod install (fresh)
-        script: |
-          set -e
-          cd ios
+          rm -rf Pods Podfile.lock
           pod repo update
-          pod install --clean-install
+          pod install
           cd ..
 
       - name: Ensure Flutter.framework
         script: |
           set -e
           flutter precache --ios
-          ENGINE=$(find $HOME/programs/flutter/bin/cache/artifacts/engine -name ios-release -type d | head -1)
+          ENGINE=$(find "$HOME/programs/flutter/bin/cache/artifacts/engine" -name ios-release -type d | head -1)
           echo "ENGINE = $ENGINE"
+
           mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
+
           if [ -d "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
             cp -R "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/
           else
@@ -60,15 +52,20 @@ workflows:
 
       - name: Build Flutter iOS
         script: |
-          echo "🚀 Building iOS…"
+          echo "🚀 Building Flutter iOS..."
           set +e
-          flutter build ios --release --no-codesign -v
-          STATUS=$?
+          flutter build ios --release --no-codesign -v | tee flutter_build.log
+          STATUS=${PIPESTATUS[0]}
           set -e
-          echo "===== SEARCHING FOR REAL ERRORS ====="
-          grep -R "error:" -n ~/Library/Developer/Xcode/DerivedData | tail -n 50 || true
+
+          echo "====== LAST 80 LINES ======"
+          tail -n 80 flutter_build.log || true
+
+          echo "====== ERROR LINES ======"
+          grep -R "error:" -n flutter_build.log | tail -n 50 || true
+
           if [ $STATUS -ne 0 ]; then
-            echo "❌ Build failed"
+            echo "❌ Flutter build failed"
             exit $STATUS
           fi
 
@@ -90,20 +87,20 @@ workflows:
         script: |
           set -e
           cat > ios/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <plist version="1.0">
-            <dict>
-              <key>method</key>
-              <string>ad-hoc</string>
-              <key>teamID</key>
-              <string>${TEAM_ID}</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                <key>com.ctmd.wonderforge.wonderspace.gallery</key>
-                <string>${PROFILE_NAME}</string>
-              </dict>
-            </dict>
-          </plist>
+  <?xml version="1.0" encoding="UTF-8"?>
+  <plist version="1.0">
+  <dict>
+  <key>method</key>
+  <string>ad-hoc</string>
+  <key>teamID</key>
+  <string>${TEAM_ID}</string>
+  <key>provisioningProfiles</key>
+  <dict>
+  <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+  <string>${PROFILE_NAME}</string>
+  </dict>
+  </dict>
+  </plist>
   EOF
   
   xcodebuild -exportArchive \
