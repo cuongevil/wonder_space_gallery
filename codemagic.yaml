@@ -1,6 +1,6 @@
 workflows:
   ios_adhoc_final:
-    name: WonderSpace iOS AdHoc
+    name: iOS AdHoc (Wonder Space Gallery)
     instance_type: mac_mini_m2
     max_build_duration: 120
 
@@ -18,82 +18,101 @@ workflows:
         PROFILE_NAME: "wonderspace_gallery_adhoc"
 
     scripts:
-      # -----------------------------------------------------
-      # 1. FLUTTER CLEAN + PUB
-      # -----------------------------------------------------
+      # 1. FLUTTER CLEAN + PUB GET
       - name: Clean Flutter
         script: |
           flutter clean
           flutter pub get
 
-      # -----------------------------------------------------
-      # 2. RESET ios/Flutter/*.xcconfig (NO ERRORS)
-      # -----------------------------------------------------
-      - name: Rebuild xcconfig
+      # 2. REBUILD ios/Flutter/*.xcconfig CHUẨN FLUTTER + COCOAPODS
+      - name: Rebuild Flutter xcconfig
         script: |
+          set -e
           mkdir -p ios/Flutter
 
-          echo '#include "Generated.xcconfig"' > ios/Flutter/Debug.xcconfig
-          echo '#include "Generated.xcconfig"' > ios/Flutter/Release.xcconfig
-          echo '#include "Generated.xcconfig"' > ios/Flutter/Profile.xcconfig
+          cat > ios/Flutter/Debug.xcconfig << 'EOF'
+          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+          #include "Generated.xcconfig"
+          EOF
 
-          echo '$(inherited)' >> ios/Flutter/Debug.xcconfig
-          echo '$(inherited)' >> ios/Flutter/Release.xcconfig
-          echo '$(inherited)' >> ios/Flutter/Profile.xcconfig
+          cat > ios/Flutter/Profile.xcconfig << 'EOF'
+          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"
+          #include "Generated.xcconfig"
+          EOF
 
-      # -----------------------------------------------------
-      # 3. POD INSTALL (NO DEINTEGRATE)
-      # -----------------------------------------------------
+          cat > ios/Flutter/Release.xcconfig << 'EOF'
+          #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+          #include "Generated.xcconfig"
+          EOF
+
+          echo "✅ Recreated ios/Flutter/*.xcconfig giống template Flutter."
+
+      # 3. POD INSTALL
       - name: Install Pods
         script: |
+          set -e
           cd ios
           rm -rf Podfile.lock
           pod repo update
           pod install --verbose
           cd ..
+          echo "✅ Pods installed."
 
-      # -----------------------------------------------------
-      # 4. Copy Flutter.framework đúng slice ARM64
-      # -----------------------------------------------------
+      # 4. ĐẢM BẢO Flutter.framework (ARM64)
       - name: Ensure Flutter.framework (ARM64 ONLY)
         script: |
+          set -e
           flutter precache --ios
 
           ENGINE=$(find $HOME/programs/flutter/bin/cache/artifacts/engine -name ios-release -type d | head -1)
-
           echo "ENGINE PATH: $ENGINE"
 
+          mkdir -p ios/Flutter
           rm -rf ios/Flutter/Flutter.framework
 
-          cp -R $ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework ios/Flutter/
+          if [ -d "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ]; then
+            cp -R "$ENGINE/Flutter.xcframework/ios-arm64/Flutter.framework" ios/Flutter/
+          elif [ -d "$ENGINE/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ]; then
+            cp -R "$ENGINE/Flutter.xcframework/ios-arm64_armv7/Flutter.framework" ios/Flutter/
+          else
+            echo "❌ Không tìm thấy Flutter.framework slice phù hợp."
+            find "$ENGINE" -name "Flutter.framework"
+            exit 1
+          fi
 
-          ls ios/Flutter/Flutter.framework/Headers || exit 1
+          ls ios/Flutter/Flutter.framework/Headers || (echo "❌ Thiếu Headers của Flutter.framework" && exit 1)
+          echo "✅ Flutter.framework ok."
 
-      # -----------------------------------------------------
-      # 5. ADD FRAMEWORK SEARCH PATHS TRỰC TIẾP TRONG XCODE PROJECT
-      # (Fix lỗi sqflite_darwin không tìm Flutter.h)
-      # -----------------------------------------------------
+      # 5. PATCH SEARCH PATHS TRONG Runner.xcodeproj (CHO CHẮC ĂN)
       - name: Patch Runner.xcodeproj search paths
         script: |
+          set -e
           FILE="ios/Runner.xcodeproj/project.pbxproj"
-          echo "Patching Runner.xcodeproj…"
+          echo "🔧 Patching $FILE ..."
 
-          sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n"$(PROJECT_DIR)\/Flutter",/g' $FILE
+          # Thêm $(PROJECT_DIR)/Flutter vào FRAMEWORK_SEARCH_PATHS nếu chưa có
+          if ! grep -q '$(PROJECT_DIR)/Flutter' "$FILE"; then
+            sed -i '' 's/FRAMEWORK_SEARCH_PATHS = (/FRAMEWORK_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter",/g' "$FILE"
+          fi
 
-          sed -i '' 's/HEADER_SEARCH_PATHS = (/HEADER_SEARCH_PATHS = (\n"$(PROJECT_DIR)\/Flutter\/Flutter.framework\/Headers",/g' $FILE
+          # Thêm header path cho Flutter.framework
+          if ! grep -q 'Flutter.framework/Headers' "$FILE"; then
+            sed -i '' 's/HEADER_SEARCH_PATHS = (/HEADER_SEARCH_PATHS = (\n				"$(PROJECT_DIR)\/Flutter\/Flutter.framework\/Headers",/g' "$FILE"
+          fi
 
-      # -----------------------------------------------------
+          echo "✅ Updated FRAMEWORK_SEARCH_PATHS & HEADER_SEARCH_PATHS."
+
       # 6. BUILD FLUTTER (NO CODESIGN)
-      # -----------------------------------------------------
       - name: Build Flutter iOS
         script: |
+          set -e
+          echo "🚀 flutter build ios --release --no-codesign"
           flutter build ios --release --no-codesign -v
 
-      # -----------------------------------------------------
-      # 7. ARCHIVE
-      # -----------------------------------------------------
+      # 7. ARCHIVE IPA (SIGNED)
       - name: Archive AdHoc IPA
         script: |
+          set -e
           xcodebuild archive \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
@@ -104,13 +123,13 @@ workflows:
             DEVELOPMENT_TEAM="${TEAM_ID}" \
             CODE_SIGN_IDENTITY="${CERT_NAME}" \
             PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME}" \
-            CODE_SIGNING_ALLOWED=YES
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGNING_REQUIRED=YES
 
-      # -----------------------------------------------------
       # 8. EXPORT IPA
-      # -----------------------------------------------------
       - name: Export IPA
         script: |
+          set -e
           cat > ios/exportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -136,6 +155,9 @@ workflows:
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist ios/exportOptions.plist \
             -exportPath build/ios/ipa
+
+          echo "✅ IPA exported:"
+          find build/ios/ipa -name "*.ipa" -maxdepth 1 || true
 
     artifacts:
       - build/ios/ipa/*.ipa
