@@ -59,16 +59,18 @@ workflows:
           STATUS=${PIPESTATUS[0]}
           set -e
 
-          echo "====== LAST 80 LINES ======"
-          tail -n 80 flutter_build.log || true
+          echo "====== LAST 200 LINES ======"
+          tail -n 200 flutter_build.log || true
 
           echo "====== ERROR LINES ======"
           grep -R "error:" -n flutter_build.log | tail -n 50 || true
 
           if [ $STATUS -ne 0 ]; then
-            echo "❌ Flutter build failed"
+            echo "❌ Flutter build failed (see flutter_build.log in artifacts)"
             exit $STATUS
           fi
+        artifacts:
+          - flutter_build.log
 
       - name: Archive IPA
         script: |
@@ -88,26 +90,27 @@ workflows:
         script: |
           set -e
           cat > ios/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <plist version="1.0">
-          <dict>
+            <?xml version="1.0" encoding="UTF-8"?>
+            <plist version="1.0">
+            <dict>
             <key>method</key>
             <string>ad-hoc</string>
             <key>teamID</key>
             <string>${TEAM_ID}</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.ctmd.wonderforge.wonderspace.gallery</key>
-              <string>${PROFILE_NAME}</string>
+            <key>com.ctmd.wonderforge.wonderspace.gallery</key>
+            <string>${PROFILE_NAME}</string>
             </dict>
-          </dict>
-          </plist>
-          EOF
+            </dict>
+            </plist>
+            EOF
+            
+            xcodebuild -exportArchive \
+              -archivePath build/ios/archive/Runner.xcarchive \
+              -exportOptionsPlist ios/exportOptions.plist \
+              -exportPath build/ios/ipa
 
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/exportOptions.plist \
-            -exportPath build/ios/ipa
-
-    artifacts:
-      - build/ios/ipa/*.ipa
+artifacts:
+  - build/ios/ipa/*.ipa
+  - ios/exportOptions.plist
