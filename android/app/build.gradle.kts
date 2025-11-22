@@ -21,6 +21,14 @@ android {
     }
 
     signingConfigs {
+        create("debug") {
+            // Dùng debug keystore mặc định
+            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
         create("release") {
             val props = Properties()
             val file = rootProject.file("key.properties")
@@ -34,19 +42,22 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // ❗ Fix quan trọng: dùng debug keystore
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = true
+            isMinifyEnabled = false
+        }
+
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")
             )
-        }
-
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -59,7 +70,6 @@ android {
         jvmTarget = "17"
     }
 
-    // Optional fix cho nhiều lib Flutter + multidex
     packaging {
         resources.excludes += "META-INF/*"
     }
