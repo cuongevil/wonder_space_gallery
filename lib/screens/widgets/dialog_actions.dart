@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../../theme/app_theme.dart';
 
 class DialogActions extends StatelessWidget {

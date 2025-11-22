@@ -52,11 +52,11 @@ class _GalleryScreenState extends State<GalleryScreen>
   bool _isBannerLoaded = false;
 
   final List<String> _searchHints = const [
-    'Cảm hứng mới mỗi ngày ✨',
-    'Không gian nghệ thuật 💜',
-    'Sắc thái cuộc sống 🌈',
-    'Góc nhìn sáng tạo 🌌',
-    'Vẻ đẹp tinh tế 💫',
+    'Tìm theo chủ đề: Fantasy, Portrait, Anime ✨',
+    'Gõ cảm xúc: Calm, Happy, Moody, Dreamy 💜',
+    'Tìm phong cách: Cinematic, Pastel, Neon 🌈',
+    'Tìm nhân vật: Girl, Couple, Baby, Goddess 🌌',
+    'Gõ trend: 11/11, Noel, Lunar New Year, Viral 💫',
   ];
 
   @override
@@ -128,7 +128,7 @@ class _GalleryScreenState extends State<GalleryScreen>
           ..setString('prompts_cache', res.body)
           ..setString('prompts_meta', remoteUpdated);
       } else {
-        _parseData(jsonDecode(cachedJson!));
+        _parseData(jsonDecode(cachedJson));
       }
     } catch (e) {
       if (cachedJson != null) {
@@ -237,7 +237,7 @@ class _GalleryScreenState extends State<GalleryScreen>
                 onChanged: (_) => _applyFilters(),
                 style: const TextStyle(fontSize: 15, color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Tìm kiếm $hint...',
+                  hintText: '$hint...',
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
                   border: InputBorder.none,
                 ),

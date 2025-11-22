@@ -52,7 +52,7 @@ class AppTheme {
       colorScheme: const ColorScheme.light(
         primary: primary,
         secondary: secondary,
-        background: bg,
+        surface: bg,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

@@ -1,62 +1,65 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'package:wonderspace.gallery/screens/main_screen.dart';
 
 import 'app_open_ad_manager.dart';
 import 'firebase_options.dart';
+import 'screens/main_screen.dart';
 
+/// =============================================================
+/// 🚀 MAIN — cấu trúc tối ưu chuẩn FlutterFire 2025
+/// =============================================================
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🛡 Bắt lỗi toàn cục Flutter (chỉ log ra console)
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-  };
+  // 🔥 1. Khởi tạo Firebase (duy nhất)
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-  // 🛡 Bắt lỗi toàn cục Platform (chỉ log ra console)
-  PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint("❌ [Platform Error] $error\n$stack");
-    return true;
-  };
-
-  // 🔥 Khởi tạo Firebase
-  await _initFirebase();
-
-  // 📡 Khởi tạo quảng cáo (không block UI)
+  // 📡 2. Bắt đầu init AdMob (không block UI)
   unawaited(_initAdMob());
 
-  // 🚀 Render UI càng sớm càng tốt
-  runApp(const WonderSpaceGalleryApp());
+  // 🚀 3. Render UI càng sớm càng tốt
+  runApp(const WonderSpaceRootApp());
 
-  // 🔒 AppCheck chạy sau UI để tránh duplicate-app
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _initAppCheck();
+  // 🔒 4. Delay AppCheck → tránh duplicate-app
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (Firebase.apps.isNotEmpty) {
+      _initAppCheck();
+    }
   });
 
-  // ⚡ Preload AppOpenAd để mở app lần sau nhanh hơn
-  AppOpenAdManager.preloadAd();
+  // ⚡ 5. Preload AppOpenAd sau khi UI đã lên
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    AppOpenAdManager.preloadAd();
+  });
 
-  // 🧠 Tăng cache ảnh để Gallery scroll mượt (ảnh AI nặng)
+  // 🧠 6. Boost cache ảnh (ảnh AI rất nặng)
   PaintingBinding.instance.imageCache.maximumSizeBytes =
       120 * 1024 * 1024;
 }
 
 /// =============================================================
-/// 🔥 Firebase Init
+/// 🔒 Firebase App Check — Play Integrity / Device Check
 /// =============================================================
-Future<void> _initFirebase() async {
+Future<void> _initAppCheck() async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+    await FirebaseAppCheck.instance.activate(
+      androidProvider:
+      kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      appleProvider:
+      kDebugMode ? AppleProvider.debug : AppleProvider.deviceCheck,
     );
-    debugPrint('🔥 [Firebase] Initialized');
+    debugPrint('🔒 [AppCheck] Activated');
   } catch (e, st) {
-    debugPrint('❌ [Firebase] Failed: $e\n$st');
+    debugPrint('⚠️ [AppCheck] Failed: $e\n$st');
   }
 }
 
@@ -84,27 +87,10 @@ Future<void> _initAdMob() async {
 }
 
 /// =============================================================
-/// 🔒 Firebase App Check (Play Integrity ở release)
+/// 🌈 APP ROOT — AppStarter để tránh FirebaseAuth race
 /// =============================================================
-Future<void> _initAppCheck() async {
-  try {
-    await FirebaseAppCheck.instance.activate(
-      androidProvider:
-      kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider:
-      kDebugMode ? AppleProvider.debug : AppleProvider.deviceCheck,
-    );
-    debugPrint('🔒 [AppCheck] Activated');
-  } catch (e, st) {
-    debugPrint('⚠️ [AppCheck] Failed: $e\n$st');
-  }
-}
-
-/// =============================================================
-/// 🌈 APP ROOT
-/// =============================================================
-class WonderSpaceGalleryApp extends StatelessWidget {
-  const WonderSpaceGalleryApp({super.key});
+class WonderSpaceRootApp extends StatelessWidget {
+  const WonderSpaceRootApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +102,48 @@ class WonderSpaceGalleryApp extends StatelessWidget {
         ColorScheme.fromSeed(seedColor: const Color(0xffa855f7)),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      home: const AppStarter(), // 👈 Chờ 200ms → tránh duplicate-app
     );
+  }
+}
+
+/// =============================================================
+/// 🌟 Splash ngắn 200ms để tránh FirebaseAuth chạy quá sớm
+/// =============================================================
+class AppStarter extends StatefulWidget {
+  const AppStarter({super.key});
+
+  @override
+  State<AppStarter> createState() => _AppStarterState();
+}
+
+class _AppStarterState extends State<AppStarter> {
+  bool ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _blockRaceConditions();
+  }
+
+  /// Delay nhỏ giúp:
+  /// - FirebaseCore → hoàn tất init
+  /// - AppCheck → activate xong
+  /// - AdMob → không gây blocking
+  Future<void> _blockRaceConditions() async {
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (mounted) setState(() => ready = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!ready) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: SizedBox.expand(),
+      );
+    }
+
+    return const MainScreen();
   }
 }
