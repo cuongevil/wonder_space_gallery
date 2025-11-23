@@ -20,40 +20,57 @@ android {
         versionName = "1.0.0"
     }
 
+    // -----------------------------
+    // Signing Configs
+    // -----------------------------
     signingConfigs {
+
+        // Debug keystore mặc định
         create("debug") {
-            // Dùng debug keystore mặc định
             storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
 
+        // Release keystore dùng wonderkids.keystore
         create("release") {
             val props = Properties()
-            val file = rootProject.file("key.properties")
-            if (file.exists()) props.load(FileInputStream(file))
+            val propFile = rootProject.file("key.properties")
 
-            keyAlias = props["keyAlias"] as String?
-            keyPassword = props["keyPassword"] as String?
-            storeFile = props["storeFile"]?.let { file(it as String) }
-            storePassword = props["storePassword"] as String?
+            if (propFile.exists()) {
+                props.load(FileInputStream(propFile))
+
+                keyAlias = props["keyAlias"] as String?
+                keyPassword = props["keyPassword"] as String?
+                storePassword = props["storePassword"] as String?
+
+                // File keystore (vì nằm trong thư mục android/)
+                storeFile = props["storeFile"]?.let { file(it as String) }
+            }
         }
     }
 
+    // -----------------------------
+    // Build Types
+    // -----------------------------
     buildTypes {
+
+        // Debug
         getByName("debug") {
-            // ❗ Fix quan trọng: dùng debug keystore
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = true
             isMinifyEnabled = false
+            isShrinkResources = false
         }
 
+        // Release
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
+            isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
-            isDebuggable = false
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 file("proguard-rules.pro")
@@ -61,6 +78,9 @@ android {
         }
     }
 
+    // -----------------------------
+    // Java & Kotlin options
+    // -----------------------------
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -70,6 +90,9 @@ android {
         jvmTarget = "17"
     }
 
+    // -----------------------------
+    // Packaging (fix conflict META-INF)
+    // -----------------------------
     packaging {
         resources.excludes += "META-INF/*"
     }
