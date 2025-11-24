@@ -21,19 +21,19 @@ android {
     }
 
     // -----------------------------
-    // Signing Configs
+    // SIGNING CONFIGS
     // -----------------------------
     signingConfigs {
 
-        // Debug keystore mặc định
-        create("debug") {
+        // ⭐ Debug: dùng mặc định của Android Studio
+        getByName("debug") {
             storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
 
-        // Release keystore dùng wonderkids.keystore
+        // ⭐ Release: đọc từ key.properties
         create("release") {
             val props = Properties()
             val propFile = rootProject.file("key.properties")
@@ -44,27 +44,22 @@ android {
                 keyAlias = props["keyAlias"] as String?
                 keyPassword = props["keyPassword"] as String?
                 storePassword = props["storePassword"] as String?
-
-                // File keystore (vì nằm trong thư mục android/)
                 storeFile = props["storeFile"]?.let { file(it as String) }
             }
         }
     }
 
     // -----------------------------
-    // Build Types
+    // BUILD TYPES
     // -----------------------------
     buildTypes {
 
-        // Debug
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
             isDebuggable = true
             isMinifyEnabled = false
-            isShrinkResources = false
         }
 
-        // Release
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
             isDebuggable = false
@@ -79,7 +74,7 @@ android {
     }
 
     // -----------------------------
-    // Java & Kotlin options
+    // JVM / KOTLIN SETTINGS
     // -----------------------------
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -91,7 +86,7 @@ android {
     }
 
     // -----------------------------
-    // Packaging (fix conflict META-INF)
+    // PACKAGING FIX
     // -----------------------------
     packaging {
         resources.excludes += "META-INF/*"

@@ -13,9 +13,11 @@ subprojects {
     project.layout.buildDirectory.set(newBuildDir.dir(project.name))
 }
 
-subprojects {
-    evaluationDependsOn(":app")
-}
+// ❌ BỎ evaluationDependsOn(":app")
+// ❗ Đoạn này ép tất cả module lấy signingConfig từ app, gây lỗi debug
+// subprojects {
+//     evaluationDependsOn(":app")
+// }
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
