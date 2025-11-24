@@ -9,7 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart' show SystemChannels;
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
@@ -67,8 +67,10 @@ class _GalleryScreenState extends State<GalleryScreen>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
-    _scaleAnim = Tween<double>(begin: 0.97, end: 1)
-        .animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
+    _scaleAnim = Tween<double>(
+      begin: 0.97,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
 
     _loadTrending();
     _scrollCtrl.addListener(_onScroll);
@@ -117,8 +119,8 @@ class _GalleryScreenState extends State<GalleryScreen>
       final remoteUpdated = meta.updated?.toIso8601String() ?? '';
       final shouldReload =
           forceRefresh ||
-              cachedJson == null ||
-              prefs.getString('prompts_meta') != remoteUpdated;
+          cachedJson == null ||
+          prefs.getString('prompts_meta') != remoteUpdated;
 
       if (shouldReload) {
         final url = await ref.getDownloadURL();
@@ -144,7 +146,8 @@ class _GalleryScreenState extends State<GalleryScreen>
 
   void _parseData(Map<String, dynamic> data) {
     final items =
-        (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ?? [];
+        (data['items'] as List?)?.map((e) => PromptItem.fromJson(e)).toList() ??
+        [];
     items.sort((a, b) => b.id.compareTo(a.id));
     _all = items;
     _visible = _all.take(_batchSize).toList();
@@ -180,8 +183,11 @@ class _GalleryScreenState extends State<GalleryScreen>
       return;
     }
     final results = _all
-        .where((it) =>
-        (it.title + it.prompt + it.tags.join(' ')).toLowerCase().contains(q))
+        .where(
+          (it) => (it.title + it.prompt + it.tags.join(' '))
+              .toLowerCase()
+              .contains(q),
+        )
         .toList();
     setState(() => _visible = results.take(_batchSize).toList());
   }
@@ -249,8 +255,11 @@ class _GalleryScreenState extends State<GalleryScreen>
                   _searchCtrl.clear();
                   _applyFilters();
                 },
-                child: const Icon(Icons.clear_rounded,
-                    color: Colors.white70, size: 20),
+                child: const Icon(
+                  Icons.clear_rounded,
+                  color: Colors.white70,
+                  size: 20,
+                ),
               ),
           ],
         ),
@@ -274,9 +283,9 @@ class _GalleryScreenState extends State<GalleryScreen>
               _visible.isEmpty
                   ? const EmptyState()
                   : _GalleryGrid(
-                items: _visible,
-                bannerAd: _isBannerLoaded ? _bannerAd : null,
-              ),
+                      items: _visible,
+                      bannerAd: _isBannerLoaded ? _bannerAd : null,
+                    ),
               if (_loadingMore)
                 const Padding(
                   padding: EdgeInsets.all(20),
@@ -300,8 +309,9 @@ class _GalleryGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalCount =
-    bannerAd == null ? items.length : items.length + items.length ~/ 10;
+    final totalCount = bannerAd == null
+        ? items.length
+        : items.length + items.length ~/ 10;
 
     return GridView.builder(
       shrinkWrap: true,
@@ -330,6 +340,7 @@ class _GalleryGrid extends StatelessWidget {
 
 class _GalleryCard extends StatefulWidget {
   final PromptItem item;
+
   const _GalleryCard({required this.item});
 
   @override
@@ -350,8 +361,10 @@ class _GalleryCardState extends State<_GalleryCard>
   @override
   void initState() {
     super.initState();
-    _heartCtrl =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _heartCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
     _initFavoriteListener();
   }
 
@@ -374,8 +387,10 @@ class _GalleryCardState extends State<_GalleryCard>
       return;
     }
 
-    final userRef =
-    _firestore.collection('favorites').doc(user.uid).collection('items');
+    final userRef = _firestore
+        .collection('favorites')
+        .doc(user.uid)
+        .collection('items');
     _favSubscription = userRef.snapshots().listen((snapshot) async {
       final favOnline = snapshot.docs.map((d) => d.id).toList();
       final favLocal = prefs.getStringList('favorites_local') ?? [];
@@ -394,11 +409,12 @@ class _GalleryCardState extends State<_GalleryCard>
     List<String> favs = prefs.getStringList('favorites_local') ?? [];
     final user = _auth.currentUser;
 
-    setState(() => _isFavorite = !_isFavorite);
-    _favVN.value = _isFavorite;
+    final newValue = !_isFavorite;
+    setState(() => _isFavorite = newValue);
+    _favVN.value = newValue;
     _heartCtrl.forward(from: 0);
 
-    if (_isFavorite) {
+    if (newValue) {
       favs.add(widget.item.id);
       if (user != null) {
         await _firestore
@@ -438,7 +454,8 @@ class _GalleryCardState extends State<_GalleryCard>
               builder: (_, snap) {
                 if (!snap.hasData) {
                   return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2));
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
                 }
                 return Hero(
                   tag: widget.item.id,
@@ -542,7 +559,7 @@ class _GalleryCardState extends State<_GalleryCard>
       barrierColor: Colors.black.withOpacity(0.2),
       transitionDuration: const Duration(milliseconds: 200),
       pageBuilder: (_, __, ___) =>
-      const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          const Center(child: CircularProgressIndicator(strokeWidth: 2)),
     );
 
     String? resolvedUrl;
@@ -568,7 +585,10 @@ class _GalleryCardState extends State<_GalleryCard>
       transitionDuration: const Duration(milliseconds: 350),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (ctx, anim, __, ___) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         double dragOffset = 0;
 
         return StatefulBuilder(
@@ -691,15 +711,18 @@ class _DetailDialog extends StatelessWidget {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close_rounded,
-                                color: Colors.white, size: 22),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                         ],
                       ),
                     ),
 
-                    // 🖼️ Ảnh preview (tự load nếu null)
+                    // 🖼️ Ảnh preview
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Hero(
@@ -708,35 +731,38 @@ class _DetailDialog extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                           child: resolvedUrl != null
                               ? CachedNetworkImage(
-                            imageUrl: resolvedUrl!,
-                            fit: BoxFit.cover,
-                          )
+                                  imageUrl: resolvedUrl!,
+                                  fit: BoxFit.cover,
+                                )
                               : FutureBuilder<String>(
-                            future: resolveImage(item.image),
-                            builder: (_, snap) {
-                              if (!snap.hasData) {
-                                return const SizedBox(
-                                  height: 240,
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
-                                  ),
-                                );
-                              }
-                              return CachedNetworkImage(
-                                imageUrl: snap.data!,
-                                fit: BoxFit.cover,
-                              );
-                            },
-                          ),
+                                  future: resolveImage(item.image),
+                                  builder: (_, snap) {
+                                    if (!snap.hasData) {
+                                      return const SizedBox(
+                                        height: 240,
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return CachedNetworkImage(
+                                      imageUrl: snap.data!,
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                ),
                         ),
                       ),
                     ),
 
                     Expanded(
                       child: Container(
-                        margin:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 8,
+                        ),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.75),
@@ -772,13 +798,21 @@ class _DetailDialog extends StatelessWidget {
                                     : Icons.favorite_border_rounded,
                                 label: isFavorite ? 'Đã thích' : 'Yêu thích',
                                 onTap: () async {
+                                  final oldValue = favNotifier.value;
+
                                   await toggleFavorite();
+                                  favNotifier.value = !oldValue;
+
+                                  ScaffoldMessenger.of(
+                                    context,
+                                  ).clearSnackBars();
+
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                        isFavorite
-                                            ? '❌ Đã xóa khỏi yêu thích'
-                                            : '💖 Đã thêm vào yêu thích',
+                                        favNotifier.value
+                                            ? '💖 Đã thêm vào yêu thích'
+                                            : '❌ Đã xóa khỏi yêu thích',
                                       ),
                                       behavior: SnackBarBehavior.floating,
                                     ),
@@ -790,9 +824,12 @@ class _DetailDialog extends StatelessWidget {
                           _GlassButton(
                             icon: Icons.copy_rounded,
                             label: 'Sao chép',
-                            onTap: () {
-                              Clipboard.setData(
-                                  ClipboardData(text: item.prompt));
+                            onTap: () async {
+                              await SystemChannels.platform.invokeMethod(
+                                'Clipboard.setData',
+                                {'text': item.prompt},
+                              );
+                              ScaffoldMessenger.of(context).clearSnackBars();
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('✨ Đã sao chép prompt!'),
@@ -844,8 +881,7 @@ class _GlassButton extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(14),
-        border:
-        Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
+        border: Border.all(color: Colors.white.withOpacity(0.35), width: 0.8),
         boxShadow: [
           BoxShadow(
             color: Colors.deepPurple.withOpacity(0.12),
